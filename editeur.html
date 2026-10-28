@@ -395,14 +395,38 @@ function updInfo(){
 }
 viewer.addEventListener('scroll', () => requestAnimationFrame(updInfo), { passive: true });
 
-function setZoom(s, keepCenter){
+function setZoom(s, keepCenter, anchor){
   s = Math.max(0.3, Math.min(4, s));
-  const ratio = s / S.scale, cy = viewer.scrollTop + viewer.clientHeight / 2, cx = viewer.scrollLeft + viewer.clientWidth / 2;
+  if (Math.abs(s - S.scale) < 0.0005) return;
+  // point that must stay under the mouse (or the centre of the view)
+  const vr = viewer.getBoundingClientRect();
+  const ax = anchor ? anchor.x - vr.left : viewer.clientWidth / 2, ay = anchor ? anchor.y - vr.top : viewer.clientHeight / 2;
+  let ref = null;
+  if (keepCenter || anchor){
+    const els = [...pagesEl.querySelectorAll('.page')];
+    const hit = els.find(el => { const r = el.getBoundingClientRect(); return vr.top + ay >= r.top && vr.top + ay <= r.bottom; }) || els.find(el => el.getBoundingClientRect().bottom >= vr.top + ay) || els[els.length - 1];
+    if (hit){ const r = hit.getBoundingClientRect(); ref = { el: hit, fx: (vr.left + ax - r.left) / r.width, fy: (vr.top + ay - r.top) / r.height }; }
+  }
   S.scale = s;
-  pagesEl.querySelectorAll('.page').forEach(el => { sizePage(el); el._rk = null; drawObjs(el); buildTextLayer(el); if (el._vis) renderCanvas(el); });
-  if (keepCenter){ viewer.scrollTop = cy * ratio - viewer.clientHeight / 2; viewer.scrollLeft = cx * ratio - viewer.clientWidth / 2; }
+  pagesEl.querySelectorAll('.page').forEach(el => { sizePage(el); el._rk = null; drawObjs(el); buildTextLayer(el); });
+  if (ref){
+    const r = ref.el.getBoundingClientRect();
+    viewer.scrollLeft += (r.left + ref.fx * r.width) - (vr.left + ax);
+    viewer.scrollTop += (r.top + ref.fy * r.height) - (vr.top + ay);
+  }
+  pagesEl.querySelectorAll('.page').forEach(el => { if (el._vis) renderCanvas(el); });
   updInfo();
 }
+/* Ctrl + molette (ou pincement du pavé tactile) : zoom centré sur la souris */
+let wheelF = 1, wheelAt = null, wheelRaf = 0;
+viewer.addEventListener('wheel', e => {
+  if (!(e.ctrlKey || e.metaKey) || !S.pages.length) return;
+  e.preventDefault();
+  const dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
+  wheelF *= Math.exp(-Math.max(-300, Math.min(300, dy)) * 0.0016);
+  wheelAt = { x: e.clientX, y: e.clientY };
+  if (!wheelRaf) wheelRaf = requestAnimationFrame(() => { wheelRaf = 0; const f = wheelF; wheelF = 1; setZoom(S.scale * f, false, wheelAt); });
+}, { passive: false });
 function fitWidth(rebuild){
   const avail = viewer.clientWidth - 40;
   let maxW = 0; S.pages.forEach(p => maxW = Math.max(maxW, getVP(p, 1).width));

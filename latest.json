@@ -1,6 +1,6 @@
 {
- "version": "1.3.0",
+ "version": "1.3.1",
  "file": "editeur.html",
- "sha256": "f00d76c3608dc9b30f107285de58077f495fb9636d5776c2cae7fad606f0cfe7",
- "notes": "version de référence"
+ "sha256": "7da6b08c12753feac6897cbc7c5a7a2035262950545458e2b1ef889e22a55325",
+ "notes": "zoom avec Ctrl + molette"
 }
