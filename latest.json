@@ -1,6 +1,6 @@
 {
- "version": "1.5.0",
+ "version": "1.5.1",
  "file": "editeur.html",
- "sha256": "7d65f7ab63cca93d6379a6b026772290961a33a41130ecb58d5df72b402f0b6a",
- "notes": "panneau Outils complet : exporter, créer, combiner, organiser, protéger, biffer, compresser, OCR, formulaires"
+ "sha256": "41e937632bb689567e68d7abcb70635ff6f0d6f533c76d2611a92e36d5a3b33c",
+ "notes": "bibliothèque de 136 polices : le texte modifié garde une police identique ou la plus proche"
 }
