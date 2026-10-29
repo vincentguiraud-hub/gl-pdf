@@ -1,6 +1,6 @@
 {
- "version": "1.4.0",
+ "version": "1.5.0",
  "file": "editeur.html",
- "sha256": "219fa43e67546a8c8fca98e5d5a15dc37cc9b08188478e414318462ecef4f58e",
- "notes": "formulaires, recherche, impression, formes, notes, corrections de bugs"
+ "sha256": "7d65f7ab63cca93d6379a6b026772290961a33a41130ecb58d5df72b402f0b6a",
+ "notes": "panneau Outils complet : exporter, créer, combiner, organiser, protéger, biffer, compresser, OCR, formulaires"
 }
