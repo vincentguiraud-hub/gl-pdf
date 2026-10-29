@@ -1429,10 +1429,12 @@ function fpList(){
 /* version en ligne : la bibliothèque est un fichier à côté de la page, chargé en arrière-plan */
 function fpFetch(){
   if (FP.fetching || document.getElementById('fontPack') || location.protocol === 'file:') return FP.fetching;
-  FP.fetching = fetch('fontpack.json').then(r => r.ok ? r.json() : null).then(j => { FP.list = j && j.fonts ? j.fonts : []; return FP.list; }).catch(() => { FP.list = []; return []; });
+  FP.fetching = fetch('fontpack.json', { cache: 'force-cache' }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(j => { FP.list = j && j.fonts ? j.fonts : []; return FP.list; })
+    .catch(err => { console.warn('bibliothèque de polices', err); FP.fetching = null; return []; });   // nouvel essai à la prochaine modification
   return FP.fetching;
 }
-setTimeout(fpFetch, 1500);
+fpFetch();
 const fpMeta = id => fpList().find(f => f.id === id);
 async function gunzip(u8){
   if (window.DecompressionStream) return new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
@@ -1563,7 +1565,10 @@ async function resolveFont(p, fontId, sample, forceLocal, it){
   const pr = proxy(p); let info = {};
   try { if (pr.commonObjs.has(fontId)) info = pr.commonObjs.get(fontId) || {}; } catch(e){}
   const raw = info.name || '', base = stripSub(raw), k = p.doc + '|' + (raw || fontId);
-  if (FM.map[k] && !forceLocal) return FM.map[k];
+  // la bibliothèque de polices doit être prête avant de choisir (iPhone : téléchargement en arrière-plan)
+  if (!FP.list){ busy(true, 'Chargement des polices…'); try { await fpFetch(); } catch(err){} finally { busy(false); } }
+  const old = FM.map[k];
+  if (old && !forceLocal && (old.subs || !fpList().length)) return old;   // sinon : on complète avec la police la plus proche
   const g = guessStd(base, info.fallbackName || ''), e = FM.map[k] || { key: k, label: base || 'Police non nommée', std: g.std, bold: g.bold || !!info.bold, italic: g.italic || !!info.italic, src: 'std' };
   if (!e.reuse && !forceLocal){
     try {
@@ -1574,7 +1579,9 @@ async function resolveFont(p, fontId, sample, forceLocal, it){
         const u2c = new Map();
         if (tu._map){ const m = tu._map; for (const c in m){ const u = m[c]; if (typeof u === 'string' && [...u].length === 1 && !u2c.has(u)) u2c.set(u, +c); } }
         else if (typeof tu.firstChar === 'number'){ for (let c = tu.firstChar; c <= tu.lastChar; c++) if (!u2c.has(String.fromCharCode(c))) u2c.set(String.fromCharCode(c), c); }
-        const ok = [...sample].every(ch => /\s/.test(ch) || (u2c.has(ch) && fc[u2c.get(ch)] != null));
+        // on garde la police d'origine même si quelques lettres manquent : elles seront écrites dans la plus proche
+        const chars = [...sample].filter(ch => !/\s/.test(ch)), have = chars.filter(ch => u2c.has(ch) && fc[u2c.get(ch)] != null).length;
+        const ok = chars.length ? have / chars.length >= 0.5 : true;
         if (u2c.size && ok){
           if (!u2c.has(' ') && fc[32] == null && !info.composite){}
           e.reuse = { raw, ref, bpc: info.composite ? 2 : 1, u2c, fc, w: info.widths || {}, dw: info.defaultWidth || 1000, css: info.loadedName, ucss: null };

@@ -1,6 +1,6 @@
 {
- "version": "1.5.1",
+ "version": "1.5.2",
  "file": "editeur.html",
- "sha256": "41e937632bb689567e68d7abcb70635ff6f0d6f533c76d2611a92e36d5a3b33c",
- "notes": "bibliothèque de 136 polices : le texte modifié garde une police identique ou la plus proche"
+ "sha256": "9a10af6edb1e6e376f100d1662987802aed4ae4eaf93b1bdf2f4fd90ece5cfbb",
+ "notes": "police d'origine conservée même s'il manque des lettres ; polices toujours chargées avant la modification"
 }
