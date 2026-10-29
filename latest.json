@@ -1,6 +1,6 @@
 {
- "version": "1.5.3",
+ "version": "1.5.4",
  "file": "editeur.html",
- "sha256": "d7a72d3c66a796648b4b3288573ee54bc6b41878fdb2743398a74381f9c93a49",
- "notes": "iPhone : barre compacte et menu ⋯, coches et pages au doigt corrigées"
+ "sha256": "27fe1c6ab3449d05e930c3a5c8f3bba916ea9fec77ea7d9b24e962d676371e1b",
+ "notes": "analyse visuelle des polices : le dessin des lettres est comparé pour choisir la police identique"
 }

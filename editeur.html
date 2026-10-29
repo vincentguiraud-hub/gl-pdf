@@ -1531,6 +1531,72 @@ function fpWidth(m, str){
   for (const ch of str){ const c = ch.codePointAt(0); const a = c >= 0x20 && c < 0x180 ? m.adv[c - 0x20] : null; if (a != null){ w += a; n++; } else w += m.aw; }
   return w;
 }
+
+/* ---------- analyse visuelle de la police : on compare le dessin réel des lettres ---------- */
+function fpCands(info, base, it){
+  const out = new Map(), add = arr => arr.forEach(x => { if (!out.has(x.id)) out.set(x.id, x); });
+  add(fpRank(info, base, it).slice(0, 12));
+  const list = fpList(), sample = it.str, origW = it.w / it.fh;
+  add(list.map(f => ({ id: f.id, fam: f.fam, label: fpLabel(f), score: Math.abs(Math.log(fpWidth(f, sample) / origW)) })).sort((a, b) => a.score - b.score).slice(0, 14));
+  // une police de chaque genre en plus, pour ne pas rater une famille au nom trompeur
+  for (const cls of ['sans', 'serif', 'mono']){ const c = list.filter(f => f.cls === cls && f.wt === 400 && !f.it).map(f => ({ id: f.id, fam: f.fam, label: fpLabel(f), score: Math.abs(Math.log(fpWidth(f, sample) / origW)) })).sort((a, b) => a.score - b.score).slice(0, 4); add(c); }
+  return [...out.values()];
+}
+function inkMap(ctx, W, H){
+  const d = ctx.getImageData(0, 0, W, H).data, w2 = W >> 1, h2 = H >> 1, m = new Float32Array(w2 * h2);
+  for (let y = 0; y < h2; y++) for (let x = 0; x < w2; x++){
+    let v = 0; for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++){ const i = ((y * 2 + dy) * W + x * 2 + dx) * 4; v += 1 - (d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11) / 255 * (d[i + 3] / 255) - (1 - d[i + 3] / 255) * 0; }
+    m[y * w2 + x] = Math.max(0, Math.min(1, v / 4));
+  }
+  return { m, w: w2, h: h2 };
+}
+function blur(a){ const { m, w, h } = a, o = new Float32Array(m.length);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++){ let s = 0, n = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++){ const yy = y + dy, xx = x + dx; if (yy >= 0 && yy < h && xx >= 0 && xx < w){ s += m[yy * w + xx]; n++; } } o[y * w + x] = s / n; }
+  return { m: o, w, h }; }
+/* renvoie les candidats triés par ressemblance (0 à 1) avec la ligne telle qu'elle est imprimée sur la page */
+async function fpVisual(p, it, cands){
+  if (!it || !it.str || !(it.w > 0) || !(it.fh > 0) || !cands.length) return null;
+  const str = it.str.length > 80 ? it.str.slice(0, 80) : it.str, wFrac = str === it.str ? 1 : null;
+  const sc = Math.min(10, Math.max(1, 40 / it.fh));
+  const x0 = it.x - it.fh * 0.15, y0 = it.base - it.fh * 1.05;
+  const lw = wFrac ? it.w : it.w * (fpWidth(fpList()[0], str) / fpWidth(fpList()[0], it.str));
+  const W = Math.ceil((lw + it.fh * 0.3) * sc) & ~1, H = Math.ceil(it.fh * 1.4 * sc) & ~1;
+  if (W < 8 || H < 8 || W * H > 8e6) return null;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const cx = cv.getContext('2d', { willReadFrequently: true }); cx.fillStyle = '#fff'; cx.fillRect(0, 0, W, H);
+  const vp = proxy(p).getViewport({ scale: sc, rotation: totalRot(p), offsetX: -x0 * sc, offsetY: -y0 * sc });
+  // l'image du document seule : sans les champs ni les annotations
+  await proxy(p).render({ canvasContext: cx, viewport: vp, annotationMode: pdfjs.AnnotationMode.DISABLE }).promise;
+  let A = inkMap(cx, W, H);
+  // on retire les traits de tableau (lignes ou colonnes presque pleines)
+  for (let y = 0; y < A.h; y++){ let s = 0; for (let x = 0; x < A.w; x++) s += A.m[y * A.w + x] > 0.5; if (s > A.w * 0.8) for (let x = 0; x < A.w; x++) A.m[y * A.w + x] = 0; }
+  for (let x = 0; x < A.w; x++){ let s = 0; for (let y = 0; y < A.h; y++) s += A.m[y * A.w + x] > 0.5; if (s > A.h * 0.85) for (let y = 0; y < A.h; y++) A.m[y * A.w + x] = 0; }
+  let ink = 0; for (const v of A.m) ink += v; if (ink < 20) return null;   // rien de lisible (texte blanc, caché…)
+  A = blur(A);
+  const tw = lw * sc;
+  const score = (pk, f) => {
+    cx.setTransform(1, 0, 0, 1, 0, 0); cx.fillStyle = '#fff'; cx.fillRect(0, 0, W, H);
+    cx.font = (it.fh * sc * f) + 'px "' + pk.css + '"'; cx.fillStyle = '#000'; cx.textBaseline = 'alphabetic';
+    const mw = cx.measureText(str).width || 1, r = mw / f / tw;
+    cx.setTransform(tw / mw, 0, 0, 1, (it.x - x0) * sc, (it.base - y0) * sc); cx.fillText(str, 0, 0); cx.setTransform(1, 0, 0, 1, 0, 0);
+    const B = blur(inkMap(cx, W, H));
+    let mn = 0, mx = 0; for (let i = 0; i < A.m.length; i++){ const a = A.m[i], b = B.m[i]; mn += Math.min(a, b); mx += Math.max(a, b); }
+    const iou = mx ? mn / mx : 0;
+    return { sim: iou * Math.exp(-Math.abs(Math.log(r)) * 2.5), iou, wr: r };
+  };
+  const out = [];
+  for (const c of cands){ const pk = await fpLoad(c.id); if (pk) out.push(Object.assign({}, c, score(pk, 1), { vs: 1, pk })); }
+  out.sort((a, b) => b.sim - a.sim);
+  // hauteur des lettres : pour les meilleures, on cherche la taille qui colle au texte imprimé
+  for (const c of out.slice(0, 3)){
+    for (const f of [0.88, 0.92, 0.95, 0.975, 1.025, 1.05, 1.08, 1.12]){ const r = score(c.pk, f); if (r.iou > c.iou + 0.01) Object.assign(c, { iou: r.iou, sim: r.iou * Math.exp(-Math.abs(Math.log(c.wr)) * 2.5), vs: f }); }
+  }
+  out.forEach(c => delete c.pk);
+  out.sort((a, b) => b.sim - a.sim);
+  // 100 % = même dessin de lettres (le rendu à l'écran n'est jamais parfaitement identique au pixel près)
+  out.forEach(x => { x.pct = Math.max(0, Math.min(100, Math.round(x.sim / 0.88 * 100))); });
+  return out;
+}
 /* classe les polices de la bibliothèque de la plus proche à la moins proche */
 function fpRank(info, baseName, it){
   const list = fpList(); if (!list.length) return [];
@@ -1651,7 +1717,16 @@ async function resolveFont(p, fontId, sample, forceLocal, it){
   }
   // police la plus proche dans la bibliothèque embarquée (même famille ou mêmes largeurs de lettres)
   if (!FP.list && FP.fetching){ try { await FP.fetching; } catch(err){} }
-  if (!e.subs && fpList().length){ try { e.subs = fpRank(info, base, it).slice(0, 8); } catch(err){ e.subs = []; console.warn(err); } }
+  if (!e.subs && fpList().length){
+    try { e.subs = fpRank(info, base, it).slice(0, 8); } catch(err){ e.subs = []; console.warn(err); }
+    // analyse visuelle : le dessin des lettres sur la page décide (le nom de la police peut tromper)
+    if (!e.bytes && it && it.str && it.str.trim().length >= 2){
+      busy(true, 'Analyse de la police…');
+      try { const v = await fpVisual(p, it, fpCands(info, base, it)); if (v && v.length){ e.subs = v.slice(0, 8); e.visual = true; } }
+      catch(err){ console.warn('analyse visuelle', err); }
+      finally { busy(false); }
+    }
+  }
   if (!e.bytes && e.subs && e.subs.length){
     const pk = await fpLoad(e.subs[0].id);
     if (pk && pk.fk){ e.bytes = pk.bytes; e.fk = pk.fk; e.css = pk.css; e.subLabel = pk.label; e.packId = pk.id; if (!e.reuse) e.src = 'sub'; }
@@ -1794,7 +1869,9 @@ async function editItem(el, i, it, cx, cy){
   try { fe = await resolveFont(el._p, it.fontName, it.str, false, it); } catch(e){ fe = { key: '', std: 'helv', bold: false, italic: false, label: '' }; }
   el._busyEdit = false;
   pushHist(); const hist0 = S.hist[S.hist.length - 1];
-  const size = Math.round(it.fh * 10) / 10;
+  // police remplacée : taille corrigée pour que la hauteur des lettres soit celle du document
+  const vs = fe.src === 'sub' && fe.visual && fe.subs && fe.subs[0] && fe.subs[0].id === fe.packId && fe.subs[0].vs ? fe.subs[0].vs : 1;
+  const size = Math.round(it.fh * vs * 10) / 10;
   const wipe = { x: it.x - 1, y: it.base - it.fh * 0.98, w: it.w + 2, h: it.fh * 1.26 };
   const c = sampleColor(el, wipe);
   const orig = !!(fe.reuse || (fe.bytes && fe.css));
@@ -1840,7 +1917,7 @@ function renderCtx(){
   const fe = o && o.fkey && FM.map[o.fkey];
   if (isText){
     const origOpt = fe && (fe.reuse || fe.bytes) ? '<option value="orig">' + esc(fe.label) + (fe.src === 'sub' ? ' → ' + esc(fe.subLabel) : ' (d’origine)') + '</option>' : '';
-    const near = fe && fe.subs && fe.subs.length ? '<optgroup label="Les plus proches">' + fe.subs.slice(0, 6).map(x => '<option value="pack:' + x.id + '">' + esc(x.label) + '</option>').join('') + '</optgroup>' : '';
+    const near = fe && fe.subs && fe.subs.length ? '<optgroup label="Les plus proches">' + fe.subs.slice(0, 6).map(x => '<option value="pack:' + x.id + '">' + esc(x.label) + (x.pct != null ? ' — ' + x.pct + ' %' : '') + '</option>').join('') + '</optgroup>' : '';
     const lib = fpList();
     const all = lib.length ? '<optgroup label="Toutes les polices (' + new Set(lib.map(f => f.fam)).size + ' familles)">' + lib.slice().sort((a, b) => a.fam.localeCompare(b.fam) || a.wt - b.wt || (a.it - b.it)).map(f => '<option value="pack:' + f.id + '">' + esc(fpLabel(f)) + '</option>').join('') + '</optgroup>' : '';
     h += '<label>Police <select id="cFont" style="max-width:240px">' + origOpt + near + '<optgroup label="Standard"><option value="helv">Helvetica / Arial</option><option value="times">Times</option><option value="courier">Courier</option></optgroup>' + all + '</select></label>' +
@@ -1851,10 +1928,10 @@ function renderCtx(){
     if (fe){
       const miss = o.font === 'orig' ? missingChars(o) : '';
       const subs = fe.std === 'times' ? 'Times' : fe.std === 'courier' ? 'Courier' : 'Helvetica';
-      if (fe.src === 'reuse') h += '<span class="fstat ok">Police d’origine : ' + esc(fe.label) + (fe.fk ? ' + version complète de l’ordinateur' : '') + '</span>';
+      if (fe.src === 'reuse') h += '<span class="fstat ok">Police d’origine : ' + esc(fe.label) + (fe.packId ? ' — lettres manquantes : ' + esc(fe.subLabel) + (fe.visual && fe.subs[0] && fe.subs[0].id === fe.packId && fe.subs[0].pct != null ? ' (ressemblance ' + fe.subs[0].pct + ' %)' : '') : fe.fk ? ' + version complète de l’ordinateur' : '') + '</span>';
       else if (fe.src === 'pdf') h += '<span class="fstat ok">Police détectée : ' + esc(fe.label) + ' (intégrée au PDF)</span>';
       else if (fe.src === 'local') h += '<span class="fstat ok">Police détectée : ' + esc(fe.label) + ' (trouvée sur l’ordinateur)</span>';
-      else if (fe.src === 'sub') h += '<span class="fstat ok">Police du document : ' + esc(fe.label) + ' — remplacée par la plus proche : ' + esc(fe.subLabel) + '</span>';
+      else if (fe.src === 'sub') h += '<span class="fstat ok">Police du document : ' + esc(fe.label) + ' — remplacée par la plus proche : ' + esc(fe.subLabel) + (fe.visual && fe.subs[0] && fe.subs[0].pct != null ? ' (ressemblance ' + fe.subs[0].pct + ' %)' : '') + '</span>';
       else h += '<span class="fstat warn">Police du document : ' + esc(fe.label) + ' — non disponible, remplacée par ' + subs + '</span>';
       if (miss) h += '<span class="fstat warn">Lettres absentes de la police du document : ' + esc(miss) + ' — écrites en ' + subs + '</span>';
       else if (fe.src === 'reuse' && fe.packId && o.text !== o.orig) h += '<span class="hint">Lettres nouvelles écrites en ' + esc(fe.subLabel) + ' (la plus proche)</span>';
@@ -3760,6 +3837,7 @@ async function save(saveAs){
 const downloadsP = (window.claude && window.claude.use) ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null);
 $('#bSave').onclick = () => save(false);
 window.__glSaveAs = () => save(true);
+window.__glAnalyse = async (i, j) => { const p = S.pages[i], its = await getItems(p), it = its[j]; const r = await fpVisual(p, it, fpCands({}, '', it)); return { str: it.str, res: (r || []).slice(0, 5).map(x => [x.label, Math.round(x.sim * 1000) / 1000, Math.round(x.iou * 1000) / 1000, Math.round(x.wr * 100) / 100, x.pct, x.vs]) }; };
 window.__glState = () => S; // lecture seule, utilisé par les tests automatiques
 window.__glRestart = async () => { if (await confirmDiscard() && window.glApp) window.glApp.restart(); };
 $('#bUndo').onclick = undo; $('#bRedo').onclick = redo;
