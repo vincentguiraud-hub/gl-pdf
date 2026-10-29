@@ -125,6 +125,7 @@ button,.tool,.ti,.th{touch-action:manipulation;-webkit-tap-highlight-color:trans
 .th .acts svg.i{width:15px;height:15px}
 .viewer{overflow:auto;min-width:0;position:relative;touch-action:pan-x pan-y;padding-block:24px 60px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .pages{display:flex;flex-direction:column;align-items:center;gap:20px;width:max-content;min-width:100%}
+.pages:has(>.empty){width:auto}
 .page{position:relative;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.18),0 6px 22px rgba(0,0,0,.12);flex:none;touch-action:pan-x pan-y}
 .page>canvas{position:absolute;inset:0;width:100%;height:100%}
 .page .tl,.page .objs{position:absolute;inset:0}
@@ -221,9 +222,29 @@ button,.tool,.ti,.th{touch-action:manipulation;-webkit-tap-highlight-color:trans
 .saved .s img{max-height:48px;max-width:150px}
 .saved .s button{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;background:var(--steel);color:#fff;font-size:12px}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--steel);color:#fff;padding:10px 14px;border-radius:8px;display:flex;gap:12px;align-items:center;z-index:60;max-width:calc(100% - 32px);box-shadow:0 8px 24px rgba(0,0,0,.3);font-size:13px}
-.toast button{color:#f0a37f;font-weight:600}
+.toast{pointer-events:none}.toast button,.toast a{color:#f0a37f;font-weight:600;pointer-events:auto}
 .busy{position:fixed;inset:0;display:grid;place-items:center;background:rgba(10,12,14,.35);z-index:70;color:#fff;font-weight:600;font-size:15px}
 @media (max-width:760px){.ctx{flex-wrap:nowrap;overflow-x:auto;white-space:nowrap;scrollbar-width:none}.ctx>*{flex:none}.main{grid-template-columns:1fr}.side{display:none}.fname{display:none}.tbtn .lb{display:none}}
+/* barre du haut : même ordre qu'avant sur ordinateur, menu « ⋯ » sur téléphone */
+.secbar{display:contents}#bMore{display:none}.lb.m{display:none}
+.top .brand{order:1}#bOpen{order:2}#bPages{order:3}#bCreate{order:4}#bAdd{order:5}#fname{order:6}#bFind{order:7}#bPrint{order:8}#bUndo{order:9}#bRedo{order:10}.top .zoom{order:11}#pInfo{order:12}#bHelp{order:13}#bMore{order:14}#bSave{order:15}
+@media (max-width:760px){
+  .top{flex-wrap:nowrap;gap:2px;position:relative;padding-left:max(10px,env(safe-area-inset-left,0px));padding-right:max(10px,env(safe-area-inset-right,0px))}
+  .top .brand{font-size:17px;margin-right:auto;gap:5px}.top .brand b{font-size:13px}
+  .top .tbtn{padding:8px 9px}
+  #bMore{display:inline-flex}
+  #bSave{padding:8px 11px;margin-left:4px}#bSave .slb{display:none}
+  .secbar{display:none;position:absolute;right:8px;top:calc(100% - 4px);z-index:60;background:var(--steel);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.35);padding:8px;flex-direction:column;align-items:stretch;gap:4px;min-width:230px}
+  .secbar.open{display:flex}
+  .secbar>*{order:0!important}
+  .secbar .tbtn{padding:10px 12px;justify-content:flex-start}
+  .secbar .tbtn .lb{display:inline}
+  .secbar .zoom{justify-content:space-between}.secbar .zoom button{padding:9px 11px}
+  .secbar .pgnum{padding:6px 12px}
+  .ctx>.hint:only-child{white-space:normal;flex:1 1 auto}
+  .empty{padding:0 16px;box-sizing:border-box;max-width:100%}
+}
+@media (pointer:coarse){.app.tool-select .obj.box::before{content:'';position:absolute;inset:-12px}.obj .del{min-width:26px;min-height:26px}}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 </style>
 </head>
@@ -233,13 +254,15 @@ button,.tool,.ti,.th{touch-action:manipulation;-webkit-tap-highlight-color:trans
     <div class="brand">G&amp;L <b>PDF</b></div>
     <button class="tbtn" id="bOpen" title="Ouvrir un PDF"><svg class="i" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="lb">Ouvrir</span></button>
     <button class="tbtn" id="bPages" title="Afficher les pages"><svg class="i" viewBox="0 0 24 24"><rect x="4" y="3" width="7" height="8" rx="1"/><rect x="13" y="3" width="7" height="8" rx="1"/><rect x="4" y="13" width="7" height="8" rx="1"/><rect x="13" y="13" width="7" height="8" rx="1"/></svg></button>
-    <button class="tbtn" id="bCreate" title="Créer un PDF"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span class="lb">Créer</span></button>
-    <button class="tbtn" id="bAdd" title="Ajouter les pages d'un autre PDF à la fin"><svg class="i" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M12 12v6M9 15h6"/></svg><span class="lb">Fusionner</span></button>
     <span class="fname" id="fname"></span>
-    <button class="tbtn" id="bFind" title="Rechercher (Ctrl+F)"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/></svg></button>
-    <button class="tbtn" id="bPrint" title="Imprimer (Ctrl+P)"><svg class="i" viewBox="0 0 24 24"><path d="M7 9V3h10v6M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="7" y="14" width="10" height="7"/></svg></button>
     <button class="tbtn" id="bUndo" title="Annuler (Ctrl+Z)"><svg class="i" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
     <button class="tbtn" id="bRedo" title="Rétablir (Ctrl+Y)"><svg class="i" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
+    <button class="tbtn" id="bMore" title="Plus d’outils" aria-haspopup="true" aria-expanded="false"><svg class="i" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg></button>
+    <div class="secbar" id="secBar">
+    <button class="tbtn" id="bCreate" title="Créer un PDF"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span class="lb">Créer</span></button>
+    <button class="tbtn" id="bAdd" title="Ajouter les pages d'un autre PDF à la fin"><svg class="i" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M12 12v6M9 15h6"/></svg><span class="lb">Fusionner</span></button>
+    <button class="tbtn" id="bFind" title="Rechercher (Ctrl+F)"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/></svg><span class="lb m">Rechercher</span></button>
+    <button class="tbtn" id="bPrint" title="Imprimer (Ctrl+P)"><svg class="i" viewBox="0 0 24 24"><path d="M7 9V3h10v6M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="7" y="14" width="10" height="7"/></svg><span class="lb m">Imprimer</span></button>
     <div class="zoom">
       <button id="zOut" title="Zoom arrière"><svg class="i" viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
       <span id="zVal">100 %</span>
@@ -248,8 +271,9 @@ button,.tool,.ti,.th{touch-action:manipulation;-webkit-tap-highlight-color:trans
       <button id="zFit" title="Ajuster à la largeur"><svg class="i" viewBox="0 0 24 24"><path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4"/></svg></button>
     </div>
     <span class="pgnum" id="pInfo"><span>Page</span><input id="pgIn" type="text" inputmode="numeric" aria-label="Numéro de page" value=""><span id="pgTot"></span></span>
-    <button class="tbtn" id="bHelp" title="Raccourcis clavier"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/></svg></button>
-    <button class="save" id="bSave" title="Enregistrer le PDF modifié (Ctrl+S)"><svg class="i" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Enregistrer</button>
+    <button class="tbtn" id="bHelp" title="Raccourcis clavier"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/></svg><span class="lb m">Aide</span></button>
+    </div>
+    <button class="save" id="bSave" title="Enregistrer le PDF modifié (Ctrl+S)"><svg class="i" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span class="slb">Enregistrer</span></button>
   </header>
 
   <nav class="tools" id="tools" aria-label="Outils">
@@ -736,7 +760,10 @@ function pageEl(p){ return pagesEl.querySelector('.page[data-id="' + p.id + '"]'
 function hexToRgb(h){ const n = parseInt(h.slice(1), 16); return PDFLib.rgb(((n>>16)&255)/255, ((n>>8)&255)/255, (n&255)/255); }
 
 let toastT;
+const TOUCH = !!(window.matchMedia && matchMedia('(pointer:coarse)').matches);
+const forTouch = m => TOUCH ? String(m).replace(/Cliquez sur/g, 'Touchez').replace(/cliquez sur/g, 'touchez').replace(/Cliquez/g, 'Touchez').replace(/cliquez/g, 'touchez').replace(/ Suppr pour l’effacer, flèches pour le déplacer\./, '') : m;
 function toast(msg, action){
+  msg = forTouch(msg);
   document.querySelectorAll('.toast').forEach(t => t.remove());
   const t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role','status');
   const sp = document.createElement('span'); sp.textContent = msg; t.appendChild(sp);
@@ -931,6 +958,27 @@ function setZoom(s, keepCenter, anchor){
 /* Ctrl + molette ailleurs que sur le document : ne jamais agrandir toute l'interface */
 document.addEventListener('wheel', e => { if (e.ctrlKey || e.metaKey) e.preventDefault(); }, { passive: false });
 /* pincement à deux doigts sur téléphone et tablette */
+/* au doigt : agit seulement si le doigt n'a presque pas bougé (sinon c'est un défilement) */
+function onTap(e, fn){
+  const x0 = e.clientX, y0 = e.clientY, id = e.pointerId; let moved = false;
+  const mv = ev => { if (ev.pointerId === id && Math.hypot(ev.clientX - x0, ev.clientY - y0) > 10) moved = true; };
+  const done = ev => {
+    if (ev.pointerId !== id) return;
+    removeEventListener('pointermove', mv, true); removeEventListener('pointerup', done, true); removeEventListener('pointercancel', done, true);
+    if (moved || ev.type === 'pointercancel' || touchPts.size > 1 || pinch) return;
+    fn();
+    // le « clic » qui suit le toucher ne doit pas tomber sur le nouvel élément (bouton ×)
+    const eat = c => { removeEventListener('click', eat, true); if (Math.hypot(c.clientX - ev.clientX, c.clientY - ev.clientY) < 25){ c.stopPropagation(); c.preventDefault(); } };
+    addEventListener('click', eat, true); setTimeout(() => removeEventListener('click', eat, true), 450);
+  };
+  addEventListener('pointermove', mv, true); addEventListener('pointerup', done, true); addEventListener('pointercancel', done, true);
+}
+function placeCheck(el, pt){
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  pushHist(); const sz = Math.max(6, S.props.size * 1.1);
+  const o = { id: uid(), type: 'check', mark: S.props.mark, x: pt.x - sz / 2, y: pt.y - sz / 2, w: sz, h: sz, color: S.props.markC };
+  el._p.objs.push(o); S.sel = o.id; drawObjs(el); renderCtx();
+}
 const touchPts = new Map(); let pinch = null, pinchRaf = 0, pinchNext = null;
 viewer.addEventListener('pointerdown', e => {
   if (e.pointerType !== 'touch') return;
@@ -1241,11 +1289,12 @@ function bindPage(el){
     const pt = toPt(e, el), t = S.tool;
     if (t === 'select' || t === 'edit'){ if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); select(null); return; }
     if (t === 'text' || t === 'date' || t === 'note'){ e.preventDefault(); return; } // handled on click
+    if (t === 'check' || (t === 'place' && S.pending)){
+      // au doigt : on pose seulement sur un vrai « toucher » (pas quand on fait défiler la page)
+      if (e.pointerType === 'touch') return onTap(e, () => { if (S.tool === 'check') placeCheck(el, pt); else if (S.tool === 'place' && S.pending) placePending(el, pt); });
+    }
     if (t === 'check'){
-      e.preventDefault(); if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-      pushHist(); const sz = Math.max(6, S.props.size * 1.1);
-      const o = { id: uid(), type: 'check', mark: S.props.mark, x: pt.x - sz / 2, y: pt.y - sz / 2, w: sz, h: sz, color: S.props.markC };
-      el._p.objs.push(o); S.sel = o.id; drawObjs(el); renderCtx(); return;
+      e.preventDefault(); placeCheck(el, pt); return;
     }
     if (t === 'hl' || t === 'wipe' || t === 'strike' || t === 'link' || t === 'crop' || t === 'field' || t === 'redact' || (t === 'shape' && (S.props.shape === 'rect' || S.props.shape === 'ellipse'))) return dragRect(e, el, t);
     if (t === 'shape') return drawLine(e, el);
@@ -1841,7 +1890,7 @@ function renderCtx(){
     const hints = { select: S.pages.length ? 'Cliquez sur un élément pour le sélectionner. Suppr pour l’effacer, flèches pour le déplacer.' : 'Ouvrez un PDF pour commencer.', text: 'Cliquez sur la page à l’endroit où écrire.' };
     h = '<span class="hint">' + (hints[t] || '') + '</span>';
   }
-  ctx.innerHTML = h; ctx.hidden = false;
+  ctx.innerHTML = forTouch(h); ctx.hidden = false;
   const fs = $('#cFont'); if (fs) fs.value = P.font;
   const apply = (k, v) => {
     S.props[k] = v;
@@ -2368,6 +2417,17 @@ $('#pgIn').addEventListener('keydown', e => {
   if (n >= 1 && n <= els.length){ els[n - 1].scrollIntoView({ block: 'start' }); $('#pgIn').blur(); } else { toast('Cette page n’existe pas (1 à ' + els.length + ').'); }
 });
 $('#pgIn').addEventListener('focus', () => $('#pgIn').select());
+/* menu « ⋯ » du téléphone */
+(() => {
+  const mb = $('#bMore'), sb = $('#secBar');
+  const close = () => { sb.classList.remove('open'); mb.setAttribute('aria-expanded', 'false'); };
+  mb.addEventListener('click', e => { e.stopPropagation(); const o = !sb.classList.contains('open'); sb.classList.toggle('open', o); mb.setAttribute('aria-expanded', String(o)); });
+  document.addEventListener('pointerdown', e => { if (sb.classList.contains('open') && !sb.contains(e.target) && !mb.contains(e.target)) close(); }, true);
+  sb.addEventListener('click', e => { const b = e.target.closest('.tbtn'); if (b) setTimeout(close, 0); }, true);
+  window.addEventListener('resize', () => { if (innerWidth > 760) close(); });
+  $('#pgIn').addEventListener('keydown', e => { if (e.key === 'Enter') setTimeout(close, 50); });
+})();
+
 $('#zPage').onclick = () => {
   if (!S.pages.length || !once('zpage', 200)) return;
   const p = currentPage() || S.pages[0], v = getVP(p, 1);
@@ -2489,9 +2549,10 @@ async function organize(){
   const before = snap(); let changed = false;
   await dialog('Organiser les pages', '<div class="row" id="oBar" style="margin-bottom:8px">' +
     '<button type="button" class="btn" data-o="left">⟲ Gauche</button><button type="button" class="btn" data-o="right">⟳ Droite</button>' +
+    '<button type="button" class="btn" data-o="up" title="Déplacer avant">◀ Déplacer</button><button type="button" class="btn" data-o="down" title="Déplacer après">Déplacer ▶</button>' +
     '<button type="button" class="btn" data-o="dup">Dupliquer</button><button type="button" class="btn" data-o="blank">+ Page vierge</button><button type="button" class="btn" data-o="file">+ Depuis un fichier</button>' +
     '<button type="button" class="btn" data-o="extract">Extraire</button><button type="button" class="btn" data-o="del" style="color:#c0392b">Supprimer</button>' +
-    '<span class="hint" id="oInfo"></span></div><div class="org" id="oGrid"></div><p class="hint" style="margin:8px 0 0">Clic pour sélectionner, Ctrl/Maj pour plusieurs. Glissez une page pour la déplacer. Les changements s’appliquent tout de suite (Ctrl+Z pour annuler).</p>', null, async (form, fin) => {
+    '<span class="hint" id="oInfo"></span></div><div class="org" id="oGrid"></div><p class="hint" style="margin:8px 0 0">' + (TOUCH ? 'Touchez les pages pour les sélectionner (plusieurs possibles), puis utilisez les boutons.' : 'Clic pour sélectionner, Ctrl/Maj pour plusieurs. Glissez une page pour la déplacer.') + ' Les changements s’appliquent tout de suite (Ctrl+Z pour annuler).</p>', null, async (form, fin) => {
     form.querySelector('[data-x]').textContent = 'Terminé';
     const grid = form.querySelector('#oGrid');
     const info = () => { form.querySelector('#oInfo').textContent = sel.size ? sel.size + ' page(s) sélectionnée(s)' : S.pages.length + ' pages'; };
@@ -2504,7 +2565,7 @@ async function organize(){
         thumbCanvas(p, 110).then(cv => c.querySelector('.cv').appendChild(cv));
         c.onclick = e => {
           if (e.shiftKey && last != null){ const a = S.pages.findIndex(x => x.id === last), b = i; for (let k = Math.min(a, b); k <= Math.max(a, b); k++) sel.add(S.pages[k].id); }
-          else if (e.ctrlKey || e.metaKey){ sel.has(p.id) ? sel.delete(p.id) : sel.add(p.id); }
+          else if (e.ctrlKey || e.metaKey || TOUCH){ sel.has(p.id) ? sel.delete(p.id) : sel.add(p.id); }
           else { sel = new Set([p.id]); }
           last = p.id; mark();
         };
@@ -2521,8 +2582,14 @@ async function organize(){
     const targets = () => sel.size ? S.pages.filter(p => sel.has(p.id)) : [];
     form.querySelector('#oBar').onclick = async e => {
       const b = e.target.closest('[data-o]'); if (!b) return; const o = b.dataset.o, T = targets();
-      if (['left','right','dup','extract','del'].includes(o) && !T.length){ toast('Sélectionnez d’abord une ou plusieurs pages.'); return; }
+      if (['left','right','dup','extract','del','up','down'].includes(o) && !T.length){ toast('Sélectionnez d’abord une ou plusieurs pages.'); return; }
       if (o === 'left' || o === 'right'){ pushHist(); T.forEach(p => rotatePage(p, o === 'right' ? 90 : 270, true)); changed = true; await draw(); }
+      else if (o === 'up' || o === 'down'){
+        const ids = S.pages.map(p => p.id), arr = S.pages.slice(); let moved = false;
+        if (o === 'up'){ for (let i = 1; i < arr.length; i++) if (sel.has(arr[i].id) && !sel.has(arr[i - 1].id)){ [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]]; moved = true; } }
+        else { for (let i = arr.length - 2; i >= 0; i--) if (sel.has(arr[i].id) && !sel.has(arr[i + 1].id)){ [arr[i + 1], arr[i]] = [arr[i], arr[i + 1]]; moved = true; } }
+        if (moved){ pushHist(); S.pages = arr; changed = true; await draw(); } void ids;
+      }
       else if (o === 'dup'){ pushHist(); T.slice().reverse().forEach(p => { const i = S.pages.indexOf(p); S.pages.splice(i + 1, 0, Object.assign(JSON.parse(JSON.stringify(p)), { id: uid(), objs: p.objs.map(x => Object.assign(JSON.parse(JSON.stringify(x)), { id: uid() })) })); }); changed = true; await draw(); }
       else if (o === 'del'){ if (T.length >= S.pages.length){ toast('Il doit rester au moins une page.'); return; } pushHist(); S.pages = S.pages.filter(p => !sel.has(p.id)); sel.clear(); changed = true; await draw(); }
       else if (o === 'blank'){ const i = T.length ? S.pages.indexOf(T[T.length - 1]) : S.pages.length - 1; await insertBlank(i, true); changed = true; await draw(); }

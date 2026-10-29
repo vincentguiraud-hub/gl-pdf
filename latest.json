@@ -1,6 +1,6 @@
 {
- "version": "1.5.2",
+ "version": "1.5.3",
  "file": "editeur.html",
- "sha256": "9a10af6edb1e6e376f100d1662987802aed4ae4eaf93b1bdf2f4fd90ece5cfbb",
- "notes": "police d'origine conservée même s'il manque des lettres ; polices toujours chargées avant la modification"
+ "sha256": "d7a72d3c66a796648b4b3288573ee54bc6b41878fdb2743398a74381f9c93a49",
+ "notes": "iPhone : barre compacte et menu ⋯, coches et pages au doigt corrigées"
 }
