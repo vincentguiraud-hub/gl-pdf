@@ -21,7 +21,9 @@ with sync_playwright() as pw:
     ok('analyse visuelle : polices aux noms codés (%d/10)'%good, good>=9)
     pg.set_input_files('#fOpen',S+'/lie.pdf'); pg.wait_for_timeout(2000)
     tops=[pg.evaluate(f"window.__glAnalyse(0,{j})")['res'][0][0] for j in range(3)]
-    ok('analyse visuelle : noms trompeurs', tops==['PT Serif','Barlow Semi Condensed','Poppins'], tops)
+    det=pg.evaluate("window.__glAnalyse(0,0)")
+    print('DETAIL', det, pg.evaluate("[...document.fonts].filter(f=>/PTSerif|Gelasio/.test(f.family)).map(f=>f.family+':'+f.status)"), flush=True)
+    ok('analyse visuelle : noms trompeurs', tops==['PT Serif','Barlow Semi Condensed','Poppins'], [tops, det['res'][:4]])
     # modification avec lettres absentes : écrites dans la police la plus proche
     pg.set_input_files('#fOpen',S+'/din.pdf'); pg.wait_for_timeout(2000)
     pg.click('[data-t=edit]'); l=pg.locator('.ti').nth(1); bb=l.bounding_box(); pg.mouse.click(bb['x']+bb['width']-2,bb['y']+bb['height']/2); pg.wait_for_timeout(2500)
