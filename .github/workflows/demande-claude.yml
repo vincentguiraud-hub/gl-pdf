@@ -1,0 +1,184 @@
+# Demandes envoyées depuis G&L PDF (bouton « Demander à Claude »).
+# Claude corrige le code, tout est reconstruit et testé ; la nouvelle version n'est publiée QUE si tous les tests passent.
+# « [Retour version] » remet la version précédente, sans IA.
+name: Demande à Claude
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+    inputs:
+      verifier:
+        description: "Vérification seule (construction + tests, rien n'est publié)"
+        default: "oui"
+
+concurrency:
+  group: glpdf-publication
+  cancel-in-progress: false
+
+jobs:
+  demande:
+    # seules les demandes envoyées par le logiciel (compte du propriétaire) sont traitées
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.issue.user.login == github.repository_owner &&
+       (startsWith(github.event.issue.title, '[G&L PDF]') || startsWith(github.event.issue.title, '[Retour version]')))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: write
+      issues: write
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      NUM: ${{ github.event.issue.number }}
+      TITRE: ${{ github.event.issue.title }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Accusé de réception
+        if: github.event_name == 'issues'
+        run: |
+          if [[ "$TITRE" == "[Retour version]"* ]]; then
+            gh issue comment "$NUM" --repo "$GITHUB_REPOSITORY" --body "⏳ Retour à la version précédente en cours…"
+          else
+            gh issue comment "$NUM" --repo "$GITHUB_REPOSITORY" --body "⏳ Claude a bien reçu votre demande et s’en occupe. Comptez 5 à 30 minutes. La correction ne sera publiée que si tous les tests automatiques passent."
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Outils de construction et de test
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq poppler-utils fonts-liberation fonts-dejavu-core libreoffice-writer-nogui >/dev/null || sudo apt-get install -y -qq poppler-utils fonts-liberation libreoffice-writer >/dev/null
+          pip install -q playwright==1.63.0 pypdf==6.17.0 python-docx==1.2.0 openpyxl==3.1.5 python-pptx==1.0.2 pillow==12.3.0 fonttools==4.66.1
+          python -m playwright install --with-deps chromium >/dev/null
+          (cd src && npm install --no-audit --no-fund --silent)
+          mkdir -p build
+          git config user.name "G&L PDF (automatique)"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          echo "DEPART=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Claude corrige
+        if: github.event_name == 'issues' && startsWith(github.event.issue.title, '[G&L PDF]')
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Lis d'abord CLAUDE.md à la racine du dépôt et suis ses consignes.
+
+            Voici une demande envoyée depuis le logiciel G&L PDF par son utilisateur (ou un collaborateur) :
+
+            Titre : ${{ github.event.issue.title }}
+
+            ${{ github.event.issue.body }}
+
+            Corrige ou améliore l'éditeur dans src/gl-pdf.html, puis construis (python3 src/build.py) et lance les
+            trois suites de tests jusqu'à ce qu'elles passent toutes. Écris le résumé pour l'utilisateur dans
+            build/resume.md (et build/action.txt pour les cas particuliers décrits dans CLAUDE.md).
+            Ne fais aucun commit et ne pousse rien : la publication est automatique après tes changements.
+          claude_args: >-
+            --max-turns 150
+            --allowedTools "Bash,Read,Edit,Write,Glob,Grep,TodoWrite"
+
+      - name: Vérifier, tester et publier
+        id: pub
+        if: always() && !cancelled()
+        run: |
+          set -o pipefail
+          ACTION="CORRECTION"
+          if [[ "$TITRE" == "[Retour version]"* ]]; then ACTION="RETOUR"; fi
+          if [ -f build/action.txt ]; then
+            A=$(tr -d '[:space:]' < build/action.txt | tr '[:lower:]' '[:upper:]')
+            case "$A" in RETOUR|QUESTION|REFUS) ACTION="$A";; esac
+          fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then ACTION="VERIFIER"; fi
+          echo "action=$ACTION" >> "$GITHUB_OUTPUT"
+
+          # tout commit fait par erreur redevient une modification en attente ; seuls src/ et tests/ sont acceptés
+          git reset --soft "$DEPART" >/dev/null 2>&1 || true
+          git reset -q
+          git checkout "$DEPART" -- editeur.html latest.json .github tools CLAUDE.md .gitignore 2>/dev/null || true
+          if [ -d versions ]; then git checkout "$DEPART" -- versions 2>/dev/null || true; fi
+          git clean -fdq -- versions .github tools 2>/dev/null || true
+
+          if [ "$ACTION" = "QUESTION" ] || [ "$ACTION" = "REFUS" ]; then
+            git checkout "$DEPART" -- src tests; exit 0
+          fi
+
+          if [ "$ACTION" = "RETOUR" ]; then
+            git checkout "$DEPART" -- src tests
+            python3 tools/release.py revenir
+            git add -A editeur.html latest.json versions src tests
+            V=$(python3 -c "import json;print(json.load(open('latest.json'))['version'])")
+            git commit -qm "Version $V : $(python3 -c "import json;print(json.load(open('latest.json'))['notes'])")"
+            git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
+            echo "version=$V" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+
+          if [ "$ACTION" = "CORRECTION" ] && git diff --quiet "$DEPART" -- src tests; then
+            echo "rien=oui" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # Claude écrit son résumé à la toute fin : sans lui, son travail est peut-être inachevé -> on ne publie rien
+          if [ "$ACTION" = "CORRECTION" ] && [ ! -s build/resume.md ]; then
+            git checkout "$DEPART" -- src tests; echo "inacheve=oui" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+
+          python3 src/build.py
+          ok=1
+          for s in suite suite2 suite3; do
+            if ! python3 tests/$s.py > build/$s.log 2>&1; then
+              # un deuxième essai pour écarter un test simplement lent
+              python3 tests/$s.py > build/$s.log 2>&1 || { ok=0; tail -n 25 build/$s.log > build/echec.txt; }
+            fi
+            tail -n 3 build/$s.log
+          done
+          if [ $ok = 0 ]; then echo "tests=echec" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "tests=ok" >> "$GITHUB_OUTPUT"
+          if [ "$ACTION" = "VERIFIER" ]; then exit 0; fi
+
+          NOTES=$(head -n 1 build/resume.md 2>/dev/null | cut -c1-200)
+          [ -n "$NOTES" ] || NOTES="Corrections demandées depuis le logiciel"
+          python3 tools/release.py publier "$NOTES"
+          V=$(python3 -c "import json;print(json.load(open('latest.json'))['version'])")
+          git add -A editeur.html latest.json versions src tests
+          git commit -qm "Version $V : $NOTES (demande #$NUM)"
+          git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Réponse dans la demande
+        if: always() && github.event_name == 'issues'
+        env:
+          ACTION: ${{ steps.pub.outputs.action }}
+          VERSION: ${{ steps.pub.outputs.version }}
+          TESTS: ${{ steps.pub.outputs.tests }}
+          RIEN: ${{ steps.pub.outputs.rien }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          R=""; [ -f build/resume.md ] && R=$(cat build/resume.md)
+          if [ -n "$VERSION" ] && [ "$ACTION" = "RETOUR" ]; then
+            printf '✅ **Retour effectué : version %s.**\n\nFermez G&L PDF et rouvrez-le : vous retrouvez la version d’avant.\n' "$VERSION" > build/rep.md
+            gh issue comment "$NUM" --repo "$GITHUB_REPOSITORY" --body-file build/rep.md; gh issue close "$NUM" --repo "$GITHUB_REPOSITORY"
+          elif [ -n "$VERSION" ]; then
+            printf '✅ **Corrigé dans la version %s.**\n\n%s\n\nFermez G&L PDF et rouvrez-le pour l’avoir (vos collaborateurs aussi). En cas de souci : bouton « Revenir à la version précédente ».\n' "$VERSION" "$R" > build/rep.md
+            gh issue comment "$NUM" --repo "$GITHUB_REPOSITORY" --body-file build/rep.md; gh issue close "$NUM" --repo "$GITHUB_REPOSITORY"
+          elif [ "$ACTION" = "QUESTION" ] || [ "$ACTION" = "REFUS" ]; then
+            printf '💬 %s\n' "$R" > build/rep.md
+            gh issue comment "$NUM" --repo "$GITHUB_REPOSITORY" --body-file build/rep.md; gh issue close "$NUM" --repo "$GITHUB_REPOSITORY"
+          elif [ "$TESTS" = "echec" ]; then
+            printf '⚠️ **La correction n’a pas passé les tests automatiques : rien n’a été changé dans votre logiciel.**\n\n%s\n\nVous pouvez renvoyer la demande avec plus de détails.\n\n<details><summary>Détail technique</summary>\n\n```\n%s\n```\n</details>\n' "$R" "$(cat build/echec.txt 2>/dev/null)" > build/rep.md
+            gh issue comment "$NUM" --repo "$GITHUB_REPOSITORY" --body-file build/rep.md; gh issue close "$NUM" --repo "$GITHUB_REPOSITORY"
+          elif [ "$RIEN" = "oui" ]; then
+            printf '💬 Aucune modification n’a été faite.\n\n%s\n' "$R" > build/rep.md
+            gh issue comment "$NUM" --repo "$GITHUB_REPOSITORY" --body-file build/rep.md; gh issue close "$NUM" --repo "$GITHUB_REPOSITORY"
+          else
+            printf '❌ Un problème technique a empêché le traitement : rien n’a été changé dans votre logiciel. Détail : %s\n' "$RUN" > build/rep.md
+            gh issue comment "$NUM" --repo "$GITHUB_REPOSITORY" --body-file build/rep.md; gh issue close "$NUM" --repo "$GITHUB_REPOSITORY"
+          fi

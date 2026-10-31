@@ -227,7 +227,7 @@ button,.tool,.ti,.th{touch-action:manipulation;-webkit-tap-highlight-color:trans
 @media (max-width:760px){.ctx{flex-wrap:nowrap;overflow-x:auto;white-space:nowrap;scrollbar-width:none}.ctx>*{flex:none}.main{grid-template-columns:1fr}.side{display:none}.fname{display:none}.tbtn .lb{display:none}}
 /* barre du haut : même ordre qu'avant sur ordinateur, menu « ⋯ » sur téléphone */
 .secbar{display:contents}#bMore{display:none}.lb.m{display:none}
-.top .brand{order:1}#bOpen{order:2}#bPages{order:3}#bCreate{order:4}#bAdd{order:5}#fname{order:6}#bFind{order:7}#bPrint{order:8}#bUndo{order:9}#bRedo{order:10}.top .zoom{order:11}#pInfo{order:12}#bHelp{order:13}#bMore{order:14}#bSave{order:15}
+.top .brand{order:1}#bOpen{order:2}#bPages{order:3}#bCreate{order:4}#bAdd{order:5}#fname{order:6}#bFind{order:7}#bPrint{order:8}#bUndo{order:9}#bRedo{order:10}.top .zoom{order:11}#pInfo{order:12}#bClaude{order:13}#bHelp{order:13}#bMore{order:14}#bSave{order:15}
 @media (max-width:760px){
   .top{flex-wrap:nowrap;gap:2px;position:relative;padding-left:max(10px,env(safe-area-inset-left,0px));padding-right:max(10px,env(safe-area-inset-right,0px))}
   .top .brand{font-size:17px;margin-right:auto;gap:5px}.top .brand b{font-size:13px}
@@ -245,6 +245,15 @@ button,.tool,.ti,.th{touch-action:manipulation;-webkit-tap-highlight-color:trans
   .empty{padding:0 16px;box-sizing:border-box;max-width:100%}
 }
 @media (pointer:coarse){.app.tool-select .obj.box::before{content:'';position:absolute;inset:-12px}.obj .del{min-width:26px;min-height:26px}}
+/* fenêtre « Demander à Claude » */
+.clw textarea{width:100%;min-height:130px;box-sizing:border-box;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px;font:inherit;resize:vertical}
+.clw input[type=text],.clw input[type=password]{width:100%;box-sizing:border-box;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px;font:inherit}
+.clw .note{font-size:12.5px;color:var(--muted);margin:0;line-height:1.45}
+.clw .warn{background:rgba(224,123,0,.12);border-radius:8px;padding:8px 10px}
+.clw .req{border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:4px}
+.clw .req b{font-weight:600}.clw .req .st{font-size:12.5px}.clw .req .rp{font-size:13px;white-space:pre-wrap;color:var(--ink);opacity:.9;max-height:160px;overflow:auto}
+.clw .list{display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow:auto}
+.clw ol{margin:0;padding-left:20px;font-size:13px;line-height:1.55}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 </style>
 </head>
@@ -271,6 +280,7 @@ button,.tool,.ti,.th{touch-action:manipulation;-webkit-tap-highlight-color:trans
       <button id="zFit" title="Ajuster à la largeur"><svg class="i" viewBox="0 0 24 24"><path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4"/></svg></button>
     </div>
     <span class="pgnum" id="pInfo"><span>Page</span><input id="pgIn" type="text" inputmode="numeric" aria-label="Numéro de page" value=""><span id="pgTot"></span></span>
+    <button class="tbtn" id="bClaude" title="Demander à Claude : signaler un problème ou demander une amélioration"><svg class="i" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></svg><span class="lb">Claude</span></button>
     <button class="tbtn" id="bHelp" title="Raccourcis clavier"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/></svg><span class="lb m">Aide</span></button>
     </div>
     <button class="save" id="bSave" title="Enregistrer le PDF modifié (Ctrl+S)"><svg class="i" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span class="slb">Enregistrer</span></button>
@@ -2504,6 +2514,121 @@ $('#pgIn').addEventListener('focus', () => $('#pgIn').select());
   window.addEventListener('resize', () => { if (innerWidth > 760) close(); });
   $('#pgIn').addEventListener('keydown', e => { if (e.key === 'Enter') setTimeout(close, 50); });
 })();
+/* ---------- « Demander à Claude » : les demandes partent sur GitHub, Claude corrige, la mise à jour arrive toute seule ---------- */
+const EDITOR_VERSION = "1.6.0";
+const GH_REPO = 'vincentguiraud-hub/gl-pdf', GH_API = 'https://api.github.com/repos/' + GH_REPO;
+const glErrs = [];
+addEventListener('error', e => { glErrs.push(String(e.message || e.error || e).slice(0, 300)); if (glErrs.length > 15) glErrs.shift(); });
+addEventListener('unhandledrejection', e => { glErrs.push('Promesse : ' + String(e.reason && (e.reason.message || e.reason)).slice(0, 300)); if (glErrs.length > 15) glErrs.shift(); });
+const lsGet = k => { try { return localStorage.getItem(k) || ''; } catch(e){ return ''; } };
+const lsSet = (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch(e){} };
+async function gh(path, opts){
+  const tok = lsGet('glpdf.ghtoken');
+  const r = await fetch(GH_API + path, Object.assign({}, opts, { headers: Object.assign({ Accept: 'application/vnd.github+json' }, tok ? { Authorization: 'Bearer ' + tok } : {}, opts && opts.body ? { 'Content-Type': 'application/json' } : {}) }));
+  if (!r.ok){ const t = await r.text().catch(() => ''); const err = new Error('GitHub ' + r.status + (t ? ' : ' + t.slice(0, 160) : '')); err.status = r.status; throw err; }
+  return r.status === 204 ? null : r.json();
+}
+const ghFail = e => !navigator.onLine ? 'Pas de connexion internet.' : e && (e.status === 401 || e.status === 403) ? 'La clé GitHub est refusée (expirée ou sans le droit « Issues »). Vérifiez-la dans l’onglet Réglages.' : e && e.status === 404 ? 'Dépôt introuvable ou clé sans accès au dépôt gl-pdf.' : 'Envoi impossible ici (' + (e && e.message || e) + '). Utilisez le logiciel sur PC.';
+function appInfo(){
+  const ua = navigator.userAgent;
+  return ['Version de l’éditeur : ' + EDITOR_VERSION, 'Logiciel : ' + (window.glApp ? 'Windows (programme ' + window.glApp.version + ')' : /iPhone|iPad/.test(ua) ? 'iPhone / iPad' : 'navigateur'),
+    'Écran : ' + innerWidth + '×' + innerHeight, 'Document ouvert : ' + (S.pages.length ? S.pages.length + ' page(s)' : 'aucun'), 'Outil actif : ' + S.tool].join('\n');
+}
+const myReqs = () => { try { return JSON.parse(lsGet('glpdf.demandes') || '[]'); } catch(e){ return []; } };
+const saveReqs = a => lsSet('glpdf.demandes', JSON.stringify(a.slice(-40)));
+async function sendRequest(kind, text){
+  const who = lsGet('glpdf.nom') || 'non précisé';
+  const title = kind === 'retour' ? '[Retour version] demandé par ' + who : '[G&L PDF] ' + text.replace(/\s+/g, ' ').trim().slice(0, 80);
+  const body = kind === 'retour' ? 'Revenir à la version précédente de l’éditeur.\n\nDemandé par : ' + who + '\n\n' + appInfo()
+    : '## Demande\n\n' + text.trim() + '\n\n## Contexte (ajouté automatiquement)\n\nDemandé par : ' + who + '\n' + appInfo() + (glErrs.length ? '\n\nDernières erreurs techniques :\n```\n' + glErrs.join('\n') + '\n```' : '');
+  const is = await gh('/issues', { method: 'POST', body: JSON.stringify({ title, body }) });
+  const a = myReqs(); a.push({ n: is.number, t: kind === 'retour' ? 'Revenir à la version précédente' : text.trim().slice(0, 120), d: Date.now() }); saveReqs(a);
+  return is.number;
+}
+async function reqStatus(n){
+  const is = await gh('/issues/' + n);
+  const cm = await gh('/issues/' + n + '/comments?per_page=30');
+  const last = cm.length ? cm[cm.length - 1].body : '';
+  const done = is.state === 'closed', okv = (last.match(/version (\d+\.\d+\.\d+)/) || [])[1];
+  const icon = !done ? '⏳' : /^✅/.test(last) ? '✅' : /^⚠️|^❌/.test(last) ? '⚠️' : '💬';
+  return { n, done, icon, last: last.replace(/<details>[\s\S]*<\/details>/, '').replace(/\*\*/g, '').trim(), version: okv };
+}
+function claudeWindow(tab){
+  closeModal();
+  modal = document.createElement('div'); modal.className = 'modal';
+  modal.innerHTML = '<div class="card clw" role="dialog" aria-modal="true"><h2>Demander à Claude</h2>' +
+    '<div class="tabs"><button type="button" data-ct="new">Nouvelle demande</button><button type="button" data-ct="list">Mes demandes</button><button type="button" data-ct="set">Réglages</button></div>' +
+    '<div class="cbody"></div><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px"><button type="button" class="btn" data-back>↩ Revenir à la version précédente</button><span style="flex:1"></span><button type="button" class="btn" data-x>Fermer</button><button type="button" class="btn pri" data-go hidden>Envoyer à Claude</button></div></div>';
+  document.body.appendChild(modal);
+  const m = modal, body = m.querySelector('.cbody'), go = m.querySelector('[data-go]'); let timer = 0;
+  const esc = s2 => String(s2).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+  m._onEsc = () => clearInterval(timer);
+  m.querySelector('[data-x]').onclick = () => closeModal();
+  const show = t => {
+    clearInterval(timer); m.querySelectorAll('[data-ct]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.ct === t)));
+    go.hidden = t !== 'new';
+    if (!lsGet('glpdf.ghtoken') && t !== 'set'){ t = 'set'; m.querySelectorAll('[data-ct]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.ct === 'set'))); go.hidden = true; }
+    if (t === 'new'){
+      body.innerHTML = '<p class="note">Décrivez le problème ou l’amélioration voulue, comme vous le diriez à quelqu’un : ce que vous faisiez, ce qui s’est passé, ce que vous attendiez. Claude corrige le logiciel, vérifie tout avec les tests automatiques, puis la mise à jour arrive chez vous et vos collaborateurs (fermez et rouvrez G&L PDF).</p>' +
+        '<textarea id="clTxt" placeholder="Exemple : quand je modifie une ligne du contrat BNP, les nouvelles lettres ne sont pas dans la même police que le reste."></textarea>' +
+        '<p class="note warn">⚠ La demande est visible publiquement sur GitHub : n’y écrivez pas de nom de client, d’adresse, de numéro de contrat ni de mot de passe. Le document ouvert n’est jamais envoyé.</p>';
+      const ta = body.querySelector('#clTxt'); ta.value = lsGet('glpdf.brouillon'); ta.oninput = () => lsSet('glpdf.brouillon', ta.value); ta.focus();
+    } else if (t === 'list'){
+      const a = myReqs().slice().reverse();
+      body.innerHTML = a.length ? '<div class="list">' + a.map(r => '<div class="req" data-n="' + r.n + '"><b>' + esc(r.t) + '</b><span class="st">⏳ Vérification…</span><div class="rp"></div></div>').join('') + '</div><p class="note">Mise à jour automatique toutes les 20 secondes tant que cette fenêtre est ouverte.</p>'
+        : '<p class="note">Aucune demande envoyée depuis cet appareil.</p>';
+      const refresh = () => a.slice(0, 8).forEach(async r => {
+        const el = body.querySelector('.req[data-n="' + r.n + '"]'); if (!el) return;
+        try { const st = await reqStatus(r.n);
+          el.querySelector('.st').textContent = st.icon + ' ' + (!st.done ? 'En cours… (Claude travaille, comptez 5 à 30 minutes)' : st.icon === '✅' ? (st.version ? 'Fait — version ' + st.version + ' : fermez et rouvrez G&L PDF' : 'Fait') : st.icon === '⚠️' ? 'Non publié (rien n’a changé dans votre logiciel)' : 'Réponse de Claude');
+          el.querySelector('.rp').textContent = st.done ? st.last.replace(/^(✅|⚠️|❌|💬)\s*/, '') : '';
+        } catch(e){ el.querySelector('.st').textContent = '… ' + ghFail(e); }
+      });
+      refresh(); timer = setInterval(refresh, 20000);
+    } else {
+      body.innerHTML = '<p class="note">À faire une seule fois sur chaque ordinateur ou téléphone.</p>' +
+        '<label class="note">Votre prénom (pour savoir qui a fait la demande)</label><input type="text" id="clNom" autocomplete="off">' +
+        '<label class="note">Clé GitHub de G&L PDF (commence par <b>github_pat_</b>)</label><input type="password" id="clTok" autocomplete="off" spellcheck="false">' +
+        '<div class="row" style="gap:8px"><button type="button" class="btn pri" data-save>Enregistrer et vérifier</button><span class="note" data-res></span></div>' +
+        '<p class="note">La clé est donnée par Vincent (G&L Créations). Elle ne permet que d’envoyer des demandes au dépôt gl-pdf. Elle reste sur cet appareil.</p>';
+      body.querySelector('#clNom').value = lsGet('glpdf.nom'); body.querySelector('#clTok').value = lsGet('glpdf.ghtoken');
+      body.querySelector('[data-save]').onclick = async () => {
+        const res = body.querySelector('[data-res]'); const tok = body.querySelector('#clTok').value.trim(), nom = body.querySelector('#clNom').value.trim();
+        if (!nom){ res.textContent = 'Indiquez votre prénom.'; return; }
+        if (!/^(github_pat_|ghp_)[A-Za-z0-9_]{20,}$/.test(tok)){ res.textContent = 'La clé ne ressemble pas à une clé GitHub.'; return; }
+        lsSet('glpdf.nom', nom); lsSet('glpdf.ghtoken', tok); res.textContent = 'Vérification…';
+        try { await gh('/issues?per_page=1&state=all'); res.textContent = '✅ Clé valide. Vous pouvez envoyer des demandes.'; setTimeout(() => { if (modal === m) show('new'); }, 900); }
+        catch(e){ res.textContent = '❌ ' + ghFail(e); }
+      };
+    }
+  };
+  m.querySelectorAll('[data-ct]').forEach(b => b.onclick = () => show(b.dataset.ct));
+  go.onclick = async () => {
+    const ta = body.querySelector('#clTxt'); const txt = ta ? ta.value.trim() : '';
+    if (txt.length < 10){ toast('Décrivez le problème en une ou deux phrases.'); return; }
+    go.disabled = true; go.textContent = 'Envoi…';
+    try { await sendRequest('demande', txt); lsSet('glpdf.brouillon', ''); toast('Demande envoyée à Claude. Vous serez prévenu ici quand ce sera fait.'); show('list'); }
+    catch(e){ toast(ghFail(e)); }
+    finally { go.disabled = false; go.textContent = 'Envoyer à Claude'; }
+  };
+  m.querySelector('[data-back]').onclick = async () => {
+    if (!lsGet('glpdf.ghtoken')){ show('set'); return; }
+    const c = await ask('Revenir à la version précédente ?', 'L’éditeur reviendra à la version d’avant la dernière mise à jour, pour vous et vos collaborateurs (fermez et rouvrez G&L PDF dans 2 à 5 minutes). Vous pourrez revenir encore plus loin en recommençant.', [{ label: 'Annuler', value: false }, { label: 'Revenir en arrière', pri: true, value: true }]);
+    if (!c) return;
+    try { await sendRequest('retour'); toast('Retour demandé. Fermez et rouvrez G&L PDF dans quelques minutes.'); claudeWindow('list'); } catch(e){ toast(ghFail(e)); }
+  };
+  show(tab || 'new');
+}
+$('#bClaude').addEventListener('click', () => claudeWindow());
+/* au démarrage : prévenir quand une demande en cours est terminée */
+setTimeout(async () => {
+  const a = myReqs().filter(r => !r.vu && Date.now() - r.d < 14 * 864e5); if (!a.length || !lsGet('glpdf.ghtoken')) return;
+  for (const r of a.slice(-5)){
+    try { const st = await reqStatus(r.n); if (st.done){ r.vu = true; saveReqs(myReqs().map(x => x.n === r.n ? r : x));
+      toast(st.icon === '✅' ? 'Claude a terminé : « ' + r.t.slice(0, 50) + ' »' + (st.version ? ' (version ' + st.version + ')' : '') : 'Claude a répondu à « ' + r.t.slice(0, 50) + ' »', { label: 'Voir', fn: () => claudeWindow('list') }); break; } } catch(e){ break; }
+  }
+}, 4000);
+
 
 $('#zPage').onclick = () => {
   if (!S.pages.length || !once('zpage', 200)) return;

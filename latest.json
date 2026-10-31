@@ -1,6 +1,20 @@
 {
- "version": "1.5.4",
+ "version": "1.6.0",
  "file": "editeur.html",
- "sha256": "27fe1c6ab3449d05e930c3a5c8f3bba916ea9fec77ea7d9b24e962d676371e1b",
- "notes": "analyse visuelle des polices : le dessin des lettres est comparé pour choisir la police identique"
+ "sha256": "a8f94285e568cc6673ca59af631d06d4819f2075c8b6af0bf5f74f85a2a9e166",
+ "notes": "Bouton « Demander à Claude » : signalez un problème, Claude corrige et la mise à jour arrive toute seule",
+ "historique": [
+  {
+   "version": "1.5.4",
+   "contenu": "1.5.4",
+   "date": "",
+   "notes": "analyse visuelle des polices : le dessin des lettres est comparé pour choisir la police identique"
+  },
+  {
+   "version": "1.6.0",
+   "contenu": "1.6.0",
+   "date": "2026-10-31",
+   "notes": "Bouton « Demander à Claude » : signalez un problème, Claude corrige et la mise à jour arrive toute seule"
+  }
+ ]
 }
