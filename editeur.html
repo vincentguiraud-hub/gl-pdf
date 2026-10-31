@@ -248,6 +248,7 @@ button,.tool,.ti,.th{touch-action:manipulation;-webkit-tap-highlight-color:trans
 /* fenêtre « Demander à Claude » */
 .clw textarea{width:100%;min-height:130px;box-sizing:border-box;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px;font:inherit;resize:vertical}
 .clw input[type=text],.clw input[type=password]{width:100%;box-sizing:border-box;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px;font:inherit}
+.clw .cbody{display:flex;flex-direction:column;gap:10px;flex:none}.clw .tabs{flex-wrap:wrap}.clw .tabs button{flex:1 1 auto}
 .clw .note{font-size:12.5px;color:var(--muted);margin:0;line-height:1.45}
 .clw .warn{background:rgba(224,123,0,.12);border-radius:8px;padding:8px 10px}
 .clw .req{border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:4px}
@@ -2514,119 +2515,137 @@ $('#pgIn').addEventListener('focus', () => $('#pgIn').select());
   window.addEventListener('resize', () => { if (innerWidth > 760) close(); });
   $('#pgIn').addEventListener('keydown', e => { if (e.key === 'Enter') setTimeout(close, 50); });
 })();
-/* ---------- « Demander à Claude » : les demandes partent sur GitHub, Claude corrige, la mise à jour arrive toute seule ---------- */
-const EDITOR_VERSION = "1.6.0";
-const GH_REPO = 'vincentguiraud-hub/gl-pdf', GH_API = 'https://api.github.com/repos/' + GH_REPO;
+/* ---------- « Demander à Claude » : la demande part sur GitHub, Vincent la valide, Claude corrige, la mise à jour arrive toute seule ---------- */
+const EDITOR_VERSION = "1.6.1";
+const GH_REPO = 'vincentguiraud-hub/gl-pdf', GH_API = 'https://api.github.com/repos/' + GH_REPO, GH_WEB = 'https://github.com/' + GH_REPO;
 const glErrs = [];
-addEventListener('error', e => { glErrs.push(String(e.message || e.error || e).slice(0, 300)); if (glErrs.length > 15) glErrs.shift(); });
-addEventListener('unhandledrejection', e => { glErrs.push('Promesse : ' + String(e.reason && (e.reason.message || e.reason)).slice(0, 300)); if (glErrs.length > 15) glErrs.shift(); });
+addEventListener('error', e => { glErrs.push(String(e.message || e.error || e).slice(0, 200)); if (glErrs.length > 8) glErrs.shift(); });
+addEventListener('unhandledrejection', e => { glErrs.push('Promesse : ' + String(e.reason && (e.reason.message || e.reason)).slice(0, 200)); if (glErrs.length > 8) glErrs.shift(); });
 const lsGet = k => { try { return localStorage.getItem(k) || ''; } catch(e){ return ''; } };
 const lsSet = (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch(e){} };
-async function gh(path, opts){
-  const tok = lsGet('glpdf.ghtoken');
-  const r = await fetch(GH_API + path, Object.assign({}, opts, { headers: Object.assign({ Accept: 'application/vnd.github+json' }, tok ? { Authorization: 'Bearer ' + tok } : {}, opts && opts.body ? { 'Content-Type': 'application/json' } : {}) }));
-  if (!r.ok){ const t = await r.text().catch(() => ''); const err = new Error('GitHub ' + r.status + (t ? ' : ' + t.slice(0, 160) : '')); err.status = r.status; throw err; }
-  return r.status === 204 ? null : r.json();
+/* lecture seule du dépôt public : aucune clé nécessaire */
+async function gh(path){
+  const r = await fetch(GH_API + path, { headers: { Accept: 'application/vnd.github+json' } });
+  if (!r.ok){ const err = new Error('GitHub ' + r.status); err.status = r.status; throw err; }
+  return r.json();
 }
-const ghFail = e => !navigator.onLine ? 'Pas de connexion internet.' : e && (e.status === 401 || e.status === 403) ? 'La clé GitHub est refusée (expirée ou sans le droit « Issues »). Vérifiez-la dans l’onglet Réglages.' : e && e.status === 404 ? 'Dépôt introuvable ou clé sans accès au dépôt gl-pdf.' : 'Envoi impossible ici (' + (e && e.message || e) + '). Utilisez le logiciel sur PC.';
+const ghFail = e => !navigator.onLine ? 'Pas de connexion internet.' : e && (e.status === 403 || e.status === 429) ? 'GitHub limite les consultations : réessayez dans quelques minutes.' : 'Suivi indisponible pour le moment.';
 function appInfo(){
   const ua = navigator.userAgent;
   return ['Version de l’éditeur : ' + EDITOR_VERSION, 'Logiciel : ' + (window.glApp ? 'Windows (programme ' + window.glApp.version + ')' : /iPhone|iPad/.test(ua) ? 'iPhone / iPad' : 'navigateur'),
     'Écran : ' + innerWidth + '×' + innerHeight, 'Document ouvert : ' + (S.pages.length ? S.pages.length + ' page(s)' : 'aucun'), 'Outil actif : ' + S.tool].join('\n');
 }
-const myReqs = () => { try { return JSON.parse(lsGet('glpdf.demandes') || '[]'); } catch(e){ return []; } };
-const saveReqs = a => lsSet('glpdf.demandes', JSON.stringify(a.slice(-40)));
-async function sendRequest(kind, text){
-  const who = lsGet('glpdf.nom') || 'non précisé';
-  const title = kind === 'retour' ? '[Retour version] demandé par ' + who : '[G&L PDF] ' + text.replace(/\s+/g, ' ').trim().slice(0, 80);
-  const body = kind === 'retour' ? 'Revenir à la version précédente de l’éditeur.\n\nDemandé par : ' + who + '\n\n' + appInfo()
-    : '## Demande\n\n' + text.trim() + '\n\n## Contexte (ajouté automatiquement)\n\nDemandé par : ' + who + '\n' + appInfo() + (glErrs.length ? '\n\nDernières erreurs techniques :\n```\n' + glErrs.join('\n') + '\n```' : '');
-  const is = await gh('/issues', { method: 'POST', body: JSON.stringify({ title, body }) });
-  const a = myReqs(); a.push({ n: is.number, t: kind === 'retour' ? 'Revenir à la version précédente' : text.trim().slice(0, 120), d: Date.now() }); saveReqs(a);
-  return is.number;
+const prenom = () => lsGet('glpdf.nom').trim();
+const tag = () => '(' + prenom() + ')';
+/* adresse GitHub d'une nouvelle demande déjà remplie : la personne n'a plus qu'à cliquer « Submit new issue » */
+function requestUrl(kind, text){
+  const title = kind === 'retour' ? '[Retour version] ' + tag() + ' revenir à la version précédente' : '[G&L PDF] ' + tag() + ' ' + text.replace(/\s+/g, ' ').trim().slice(0, 70);
+  let body = kind === 'retour' ? 'Revenir à la version précédente de l’éditeur.\n\nDemandé par : ' + prenom() + '\n' + appInfo()
+    : '## Demande\n\n' + text.trim() + '\n\n## Contexte (ajouté automatiquement)\n\nDemandé par : ' + prenom() + '\n' + appInfo() + (glErrs.length ? '\n\nDernières erreurs techniques :\n```\n' + glErrs.join('\n') + '\n```' : '');
+  if (body.length > 5000) body = body.slice(0, 5000) + '\n…';
+  return GH_WEB + '/issues/new?title=' + encodeURIComponent(title) + '&body=' + encodeURIComponent(body);
 }
-async function reqStatus(n){
-  const is = await gh('/issues/' + n);
-  const cm = await gh('/issues/' + n + '/comments?per_page=30');
-  const last = cm.length ? cm[cm.length - 1].body : '';
-  const done = is.state === 'closed', okv = (last.match(/version (\d+\.\d+\.\d+)/) || [])[1];
-  const icon = !done ? '⏳' : /^✅/.test(last) ? '✅' : /^⚠️|^❌/.test(last) ? '⚠️' : '💬';
-  return { n, done, icon, last: last.replace(/<details>[\s\S]*<\/details>/, '').replace(/\*\*/g, '').trim(), version: okv };
+const statusCache = {};
+/* état d'une demande : en attente de validation, en cours, terminée */
+async function reqStatus(is){
+  const c = statusCache[is.number];
+  if (c && c.updated === is.updated_at) return c;
+  const cm = is.comments ? await gh('/issues/' + is.number + '/comments?per_page=50') : [];
+  const bodies = cm.map(x => x.body || ''), last = bodies[bodies.length - 1] || '';
+  let icon, label;
+  if (is.state === 'closed'){ icon = /^✅/.test(last) ? '✅' : /^⚠️|^❌/.test(last) ? '⚠️' : '💬';
+    const v = (last.match(/version (\d+\.\d+\.\d+)/) || [])[1];
+    label = icon === '✅' ? 'Fait' + (v ? ' — version ' + v + ' : fermez et rouvrez G&L PDF' : '') : icon === '⚠️' ? 'Non publié (rien n’a changé dans le logiciel)' : 'Réponse de Claude'; }
+  else if (bodies.some(b => /^⏳ (Claude a bien reçu|Retour)/.test(b))){ icon = '⏳'; label = 'Validée — Claude travaille (5 à 30 minutes)'; }
+  else { icon = '🕓'; label = 'En attente de validation par Vincent'; }
+  const r = { updated: is.updated_at, icon, label, done: is.state === 'closed', text: is.state === 'closed' ? last.replace(/<details>[\s\S]*<\/details>/, '').replace(/\*\*/g, '').replace(/^(✅|⚠️|❌|💬)\s*/, '').trim() : '' };
+  statusCache[is.number] = r; return r;
+}
+async function myIssues(){
+  if (!prenom()) return [];
+  const list = await gh('/issues?state=all&per_page=50&sort=created&direction=desc');
+  return list.filter(i => !i.pull_request && /^\[(G&L PDF|Retour version)\]/.test(i.title) && i.title.includes(tag()));
 }
 function claudeWindow(tab){
   closeModal();
   modal = document.createElement('div'); modal.className = 'modal';
   modal.innerHTML = '<div class="card clw" role="dialog" aria-modal="true"><h2>Demander à Claude</h2>' +
-    '<div class="tabs"><button type="button" data-ct="new">Nouvelle demande</button><button type="button" data-ct="list">Mes demandes</button><button type="button" data-ct="set">Réglages</button></div>' +
-    '<div class="cbody"></div><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px"><button type="button" class="btn" data-back>↩ Revenir à la version précédente</button><span style="flex:1"></span><button type="button" class="btn" data-x>Fermer</button><button type="button" class="btn pri" data-go hidden>Envoyer à Claude</button></div></div>';
+    '<div class="tabs"><button type="button" data-ct="new">Nouvelle demande</button><button type="button" data-ct="list">Mes demandes</button><button type="button" data-ct="set">Mon prénom</button></div>' +
+    '<div class="cbody"></div><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px"><button type="button" class="btn" data-back>↩ Revenir à la version précédente</button><span style="flex:1"></span><button type="button" class="btn" data-x>Fermer</button><button type="button" class="btn pri" data-go hidden>Préparer la demande</button></div></div>';
   document.body.appendChild(modal);
   const m = modal, body = m.querySelector('.cbody'), go = m.querySelector('[data-go]'); let timer = 0;
   const esc = s2 => String(s2).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
   m._onEsc = () => clearInterval(timer);
   m.querySelector('[data-x]').onclick = () => closeModal();
+  const press = t => m.querySelectorAll('[data-ct]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.ct === t)));
+  /* étape finale : un vrai lien (touché par la personne), qui ouvre GitHub avec la demande déjà écrite */
+  const sendStep = (url, what) => {
+    clearInterval(timer); press(''); go.hidden = true;
+    body.innerHTML = '<p class="note">' + what + ' est prête. Il reste une étape :</p>' +
+      '<ol><li>Touchez le bouton ci-dessous : GitHub s’ouvre avec la demande déjà écrite (connectez-vous si GitHub le demande).</li><li>En bas de la page GitHub, touchez <b>Create</b> (ou « Submit new issue »).</li><li>Vincent valide la demande, puis Claude s’en occupe. Suivez l’avancement dans « Mes demandes ».</li></ol>' +
+      '<a class="btn pri" style="align-self:flex-start;text-decoration:none" target="_blank" rel="noopener" data-open>Ouvrir GitHub pour envoyer</a>';
+    const a = body.querySelector('[data-open]'); a.href = url;
+    a.addEventListener('click', () => { lsSet('glpdf.brouillon', ''); setTimeout(() => { if (modal === m) show('list'); }, 1500); });
+  };
   const show = t => {
-    clearInterval(timer); m.querySelectorAll('[data-ct]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.ct === t)));
-    go.hidden = t !== 'new';
-    if (!lsGet('glpdf.ghtoken') && t !== 'set'){ t = 'set'; m.querySelectorAll('[data-ct]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.ct === 'set'))); go.hidden = true; }
+    clearInterval(timer); if (!prenom() && t !== 'set') t = 'set';
+    press(t); go.hidden = t !== 'new';
     if (t === 'new'){
-      body.innerHTML = '<p class="note">Décrivez le problème ou l’amélioration voulue, comme vous le diriez à quelqu’un : ce que vous faisiez, ce qui s’est passé, ce que vous attendiez. Claude corrige le logiciel, vérifie tout avec les tests automatiques, puis la mise à jour arrive chez vous et vos collaborateurs (fermez et rouvrez G&L PDF).</p>' +
+      body.innerHTML = '<p class="note">Décrivez le problème ou l’amélioration voulue, comme vous le diriez à quelqu’un : ce que vous faisiez, ce qui s’est passé, ce que vous attendiez. Après validation par Vincent, Claude corrige le logiciel, vérifie tout avec les tests automatiques, et la mise à jour arrive chez tout le monde (fermez et rouvrez G&L PDF).</p>' +
         '<textarea id="clTxt" placeholder="Exemple : quand je modifie une ligne du contrat BNP, les nouvelles lettres ne sont pas dans la même police que le reste."></textarea>' +
         '<p class="note warn">⚠ La demande est visible publiquement sur GitHub : n’y écrivez pas de nom de client, d’adresse, de numéro de contrat ni de mot de passe. Le document ouvert n’est jamais envoyé.</p>';
       const ta = body.querySelector('#clTxt'); ta.value = lsGet('glpdf.brouillon'); ta.oninput = () => lsSet('glpdf.brouillon', ta.value); ta.focus();
     } else if (t === 'list'){
-      const a = myReqs().slice().reverse();
-      body.innerHTML = a.length ? '<div class="list">' + a.map(r => '<div class="req" data-n="' + r.n + '"><b>' + esc(r.t) + '</b><span class="st">⏳ Vérification…</span><div class="rp"></div></div>').join('') + '</div><p class="note">Mise à jour automatique toutes les 20 secondes tant que cette fenêtre est ouverte.</p>'
-        : '<p class="note">Aucune demande envoyée depuis cet appareil.</p>';
-      const refresh = () => a.slice(0, 8).forEach(async r => {
-        const el = body.querySelector('.req[data-n="' + r.n + '"]'); if (!el) return;
-        try { const st = await reqStatus(r.n);
-          el.querySelector('.st').textContent = st.icon + ' ' + (!st.done ? 'En cours… (Claude travaille, comptez 5 à 30 minutes)' : st.icon === '✅' ? (st.version ? 'Fait — version ' + st.version + ' : fermez et rouvrez G&L PDF' : 'Fait') : st.icon === '⚠️' ? 'Non publié (rien n’a changé dans votre logiciel)' : 'Réponse de Claude');
-          el.querySelector('.rp').textContent = st.done ? st.last.replace(/^(✅|⚠️|❌|💬)\s*/, '') : '';
-        } catch(e){ el.querySelector('.st').textContent = '… ' + ghFail(e); }
-      });
-      refresh(); timer = setInterval(refresh, 20000);
-    } else {
-      body.innerHTML = '<p class="note">À faire une seule fois sur chaque ordinateur ou téléphone.</p>' +
-        '<label class="note">Votre prénom (pour savoir qui a fait la demande)</label><input type="text" id="clNom" autocomplete="off">' +
-        '<label class="note">Clé GitHub de G&L PDF (commence par <b>github_pat_</b>)</label><input type="password" id="clTok" autocomplete="off" spellcheck="false">' +
-        '<div class="row" style="gap:8px"><button type="button" class="btn pri" data-save>Enregistrer et vérifier</button><span class="note" data-res></span></div>' +
-        '<p class="note">La clé est donnée par Vincent (G&L Créations). Elle ne permet que d’envoyer des demandes au dépôt gl-pdf. Elle reste sur cet appareil.</p>';
-      body.querySelector('#clNom').value = lsGet('glpdf.nom'); body.querySelector('#clTok').value = lsGet('glpdf.ghtoken');
-      body.querySelector('[data-save]').onclick = async () => {
-        const res = body.querySelector('[data-res]'); const tok = body.querySelector('#clTok').value.trim(), nom = body.querySelector('#clNom').value.trim();
-        if (!nom){ res.textContent = 'Indiquez votre prénom.'; return; }
-        if (!/^(github_pat_|ghp_)[A-Za-z0-9_]{20,}$/.test(tok)){ res.textContent = 'La clé ne ressemble pas à une clé GitHub.'; return; }
-        lsSet('glpdf.nom', nom); lsSet('glpdf.ghtoken', tok); res.textContent = 'Vérification…';
-        try { await gh('/issues?per_page=1&state=all'); res.textContent = '✅ Clé valide. Vous pouvez envoyer des demandes.'; setTimeout(() => { if (modal === m) show('new'); }, 900); }
-        catch(e){ res.textContent = '❌ ' + ghFail(e); }
+      body.innerHTML = '<div class="list"><p class="note">Chargement…</p></div><p class="note">Mise à jour automatique toutes les minutes tant que cette fenêtre est ouverte.</p>';
+      const list = body.querySelector('.list');
+      const refresh = async () => {
+        try {
+          const is = await myIssues();
+          if (!is.length){ list.innerHTML = '<p class="note">Aucune demande trouvée au nom de « ' + esc(prenom()) + ' ». Une demande envoyée à l’instant apparaît ici après quelques secondes.</p>'; return; }
+          const rows = await Promise.all(is.slice(0, 10).map(async i => { try { return [i, await reqStatus(i)]; } catch(e){ return [i, { icon: '…', label: ghFail(e), text: '' }]; } }));
+          if (modal !== m) return;
+          list.innerHTML = rows.map(([i, st]) => '<div class="req"><b>' + esc(i.title.replace(/^\[[^\]]+\]\s*\([^)]*\)\s*/, '')) + '</b><span class="st">' + st.icon + ' ' + esc(st.label) + '</span>' + (st.text ? '<div class="rp">' + esc(st.text) + '</div>' : '') + '</div>').join('');
+          rows.forEach(([i, st]) => { if (st.done){ const seen = JSON.parse(lsGet('glpdf.vues') || '[]'); if (!seen.includes(i.number)){ seen.push(i.number); lsSet('glpdf.vues', JSON.stringify(seen.slice(-80))); } } });
+        } catch(e){ if (modal === m) list.innerHTML = '<p class="note">' + esc(ghFail(e)) + '</p>'; }
       };
+      refresh(); timer = setInterval(refresh, 60000);
+    } else {
+      body.innerHTML = '<p class="note">Votre prénom sert à retrouver vos demandes et à indiquer à Vincent qui les a faites. Aucune clé ni mot de passe n’est nécessaire.</p>' +
+        '<input type="text" id="clNom" autocomplete="given-name" maxlength="30" placeholder="Prénom">' +
+        '<div class="row" style="gap:8px"><button type="button" class="btn pri" data-save>Enregistrer</button><span class="note" data-res></span></div>' +
+        '<p class="note">Pour envoyer une demande, il faut un compte GitHub (gratuit, à créer une seule fois sur github.com). Vincent valide chaque demande avant que Claude ne modifie le logiciel.</p>';
+      const inp = body.querySelector('#clNom'); inp.value = prenom(); inp.focus();
+      body.querySelector('[data-save]').onclick = () => {
+        const v = inp.value.replace(/[()\[\]]/g, '').trim();
+        if (v.length < 2){ body.querySelector('[data-res]').textContent = 'Indiquez votre prénom.'; return; }
+        lsSet('glpdf.nom', v); show('new');
+      };
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') body.querySelector('[data-save]').click(); });
     }
   };
   m.querySelectorAll('[data-ct]').forEach(b => b.onclick = () => show(b.dataset.ct));
-  go.onclick = async () => {
+  go.onclick = () => {
     const ta = body.querySelector('#clTxt'); const txt = ta ? ta.value.trim() : '';
     if (txt.length < 10){ toast('Décrivez le problème en une ou deux phrases.'); return; }
-    go.disabled = true; go.textContent = 'Envoi…';
-    try { await sendRequest('demande', txt); lsSet('glpdf.brouillon', ''); toast('Demande envoyée à Claude. Vous serez prévenu ici quand ce sera fait.'); show('list'); }
-    catch(e){ toast(ghFail(e)); }
-    finally { go.disabled = false; go.textContent = 'Envoyer à Claude'; }
+    sendStep(requestUrl('demande', txt), 'Votre demande');
   };
-  m.querySelector('[data-back]').onclick = async () => {
-    if (!lsGet('glpdf.ghtoken')){ show('set'); return; }
-    const c = await ask('Revenir à la version précédente ?', 'L’éditeur reviendra à la version d’avant la dernière mise à jour, pour vous et vos collaborateurs (fermez et rouvrez G&L PDF dans 2 à 5 minutes). Vous pourrez revenir encore plus loin en recommençant.', [{ label: 'Annuler', value: false }, { label: 'Revenir en arrière', pri: true, value: true }]);
-    if (!c) return;
-    try { await sendRequest('retour'); toast('Retour demandé. Fermez et rouvrez G&L PDF dans quelques minutes.'); claudeWindow('list'); } catch(e){ toast(ghFail(e)); }
+  m.querySelector('[data-back]').onclick = () => {
+    if (!prenom()){ show('set'); return; }
+    sendStep(requestUrl('retour'), 'La demande de retour à la version précédente');
   };
   show(tab || 'new');
 }
 $('#bClaude').addEventListener('click', () => claudeWindow());
-/* au démarrage : prévenir quand une demande en cours est terminée */
+/* au démarrage : prévenir quand une demande est terminée */
 setTimeout(async () => {
-  const a = myReqs().filter(r => !r.vu && Date.now() - r.d < 14 * 864e5); if (!a.length || !lsGet('glpdf.ghtoken')) return;
-  for (const r of a.slice(-5)){
-    try { const st = await reqStatus(r.n); if (st.done){ r.vu = true; saveReqs(myReqs().map(x => x.n === r.n ? r : x));
-      toast(st.icon === '✅' ? 'Claude a terminé : « ' + r.t.slice(0, 50) + ' »' + (st.version ? ' (version ' + st.version + ')' : '') : 'Claude a répondu à « ' + r.t.slice(0, 50) + ' »', { label: 'Voir', fn: () => claudeWindow('list') }); break; } } catch(e){ break; }
-  }
+  if (!prenom()) return;
+  try {
+    const seen = JSON.parse(lsGet('glpdf.vues') || '[]');
+    const is = (await myIssues()).filter(i => i.state === 'closed' && !seen.includes(i.number) && Date.now() - Date.parse(i.closed_at) < 14 * 864e5);
+    if (!is.length) return;
+    const i = is[0], st = await reqStatus(i); seen.push(i.number); lsSet('glpdf.vues', JSON.stringify(seen.slice(-80)));
+    toast((st.icon === '✅' ? 'Claude a terminé : « ' : 'Claude a répondu : « ') + i.title.replace(/^\[[^\]]+\]\s*\([^)]*\)\s*/, '').slice(0, 50) + ' »', { label: 'Voir', fn: () => claudeWindow('list') });
+  } catch(e){}
 }, 4000);
 
 
@@ -3962,7 +3981,7 @@ async function save(saveAs){
 const downloadsP = (window.claude && window.claude.use) ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null);
 $('#bSave').onclick = () => save(false);
 window.__glSaveAs = () => save(true);
-window.__glAnalyse = async (i, j) => { const p = S.pages[i], its = await getItems(p), it = its[j]; const r = await fpVisual(p, it, fpCands({}, '', it)); return { str: it.str, res: (r || []).slice(0, 5).map(x => [x.label, Math.round(x.sim * 1000) / 1000, Math.round(x.iou * 1000) / 1000, Math.round(x.wr * 100) / 100, x.pct, x.vs]) }; };
+window.__glAnalyse = async (i, j) => { const p = S.pages[i], its = await getItems(p), it = its[j]; const cs = fpCands({}, '', it); const r = await fpVisual(p, it, cs); return { geo: [it.w, it.fh, it.x], cands: cs.map(c => c.label), str: it.str, res: (r || []).slice(0, 5).map(x => [x.label, Math.round(x.sim * 1000) / 1000, Math.round(x.iou * 1000) / 1000, Math.round(x.wr * 100) / 100, x.pct, x.vs]) }; };
 window.__glState = () => S; // lecture seule, utilisé par les tests automatiques
 window.__glRestart = async () => { if (await confirmDiscard() && window.glApp) window.glApp.restart(); };
 $('#bUndo').onclick = undo; $('#bRedo').onclick = redo;

@@ -1,8 +1,8 @@
 {
- "version": "1.6.0",
+ "version": "1.6.1",
  "file": "editeur.html",
- "sha256": "a8f94285e568cc6673ca59af631d06d4819f2075c8b6af0bf5f74f85a2a9e166",
- "notes": "Bouton « Demander à Claude » : signalez un problème, Claude corrige et la mise à jour arrive toute seule",
+ "sha256": "53270e0186490abb5fe5721cbbac370f3200ab97e07f7aaf6fe433550272982a",
+ "notes": "Demander à Claude sans clé : la demande s’ouvre sur GitHub, Vincent valide en répondant ok",
  "historique": [
   {
    "version": "1.5.4",
@@ -15,6 +15,12 @@
    "contenu": "1.6.0",
    "date": "2026-10-31",
    "notes": "Bouton « Demander à Claude » : signalez un problème, Claude corrige et la mise à jour arrive toute seule"
+  },
+  {
+   "version": "1.6.1",
+   "contenu": "1.6.1",
+   "date": "2026-10-31",
+   "notes": "Demander à Claude sans clé : la demande s’ouvre sur GitHub, Vincent valide en répondant ok"
   }
  ]
 }

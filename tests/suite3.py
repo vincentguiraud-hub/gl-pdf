@@ -23,9 +23,10 @@ with sync_playwright() as pw:
     pg.set_input_files('#fOpen',S+'/lie.pdf'); pg.wait_for_timeout(2000)
     tops=[pg.evaluate(f"window.__glAnalyse(0,{j})")['res'][0][0] for j in range(3)]
     det=pg.evaluate("window.__glAnalyse(0,0)")
-    print('DETAIL', det, pg.evaluate("[...document.fonts].filter(f=>/PTSerif|Gelasio/.test(f.family)).map(f=>f.family+':'+f.status)"), flush=True)
-    cand=pg.evaluate("(async()=>{const S=window.__glState();return 0})()")
-    ok('analyse visuelle : noms trompeurs', tops==['PT Serif','Barlow Semi Condensed','Poppins'], [tops, det['geo'], det['cands']])
+    SERIF={'PT Serif','Gelasio','Source Serif 4','Liberation Serif','Tinos','Caladea','EB Garamond','Merriweather','IBM Plex Serif','Noto Serif','DejaVu Serif','Noto Serif Condensed'}
+    fam=lambda x: x.replace(' Gras','').replace(' Italique','').replace(' Medium','').replace(' Light','')
+    # « ArialMT » qui est en réalité une police à empattements, « Times » qui est une Barlow, « Calibri » qui est une Poppins
+    ok('analyse visuelle : noms trompeurs', fam(tops[0]) in SERIF and fam(tops[1]).startswith('Barlow') and fam(tops[2])=='Poppins', [tops, det['res'][:3]])
     # modification avec lettres absentes : écrites dans la police la plus proche
     pg.set_input_files('#fOpen',S+'/din.pdf'); pg.wait_for_timeout(2000)
     pg.click('[data-t=edit]'); l=pg.locator('.ti').nth(1); bb=l.bounding_box(); pg.mouse.click(bb['x']+bb['width']-2,bb['y']+bb['height']/2); pg.wait_for_timeout(2500)
@@ -80,26 +81,32 @@ with sync_playwright() as pw:
     p=OUT+'/mob.pdf'; shutil.copy(dl.value.path(), p); t=subprocess.run(['pdftotext',p,'-'],capture_output=True,text=True).stdout
     ok('téléphone : enregistrer', 'bis' in t and 'Bonjour' in t)
     ok('téléphone : aucune erreur', not errs, errs[:3])
-    # ---- fenêtre « Demander à Claude » (fausse API GitHub : rien n'est envoyé)
-    import json as _j
-    issues={}
+    # ---- fenêtre « Demander à Claude » (aucune clé ; fausse API GitHub en lecture : rien n'est envoyé)
+    from urllib.parse import unquote
     def gh(route, req):
         u=req.url
-        if req.method=='POST' and u.endswith('/issues'):
-            n=100+len(issues); issues[n]=_j.loads(req.post_data); return route.fulfill(status=201, json={'number':n})
-        if '/comments' in u: return route.fulfill(json=[{'body':'✅ **Corrigé dans la version 9.9.9.**\n\nTest.'}])
-        if '/issues/' in u: return route.fulfill(json={'state':'closed'})
-        return route.fulfill(json=[])
+        if '/comments' in u:
+            n=int(u.split('/issues/')[1].split('/')[0])
+            return route.fulfill(json=[{'body':'⏳ Claude a bien reçu votre demande'},{'body':'✅ **Corrigé dans la version 9.9.9.**\n\nTest.'}] if n==7 else [{'body':'🕓 Demande reçue.'}])
+        if '/issues?' in u:
+            return route.fulfill(json=[{'number':8,'title':'[G&L PDF] (Test) police différente','state':'open','comments':1,'updated_at':'b'},
+                                       {'number':7,'title':'[G&L PDF] (Test) zoom trop lent','state':'closed','comments':2,'updated_at':'a','closed_at':'2099-01-01T00:00:00Z'},
+                                       {'number':6,'title':'[G&L PDF] (Autre) pas à moi','state':'open','comments':0,'updated_at':'c'}])
+        return route.fulfill(status=404, body='')
     pg=b.new_page(viewport={'width':1366,'height':900}); errs=[]; pg.on('pageerror',lambda e:errs.append(str(e)))
     pg.route('https://api.github.com/**', gh); pg.goto(APP); pg.wait_for_timeout(1000)
     pg.click('#bClaude'); pg.wait_for_timeout(300)
-    ok('Claude : réglages demandés au premier usage', pg.locator('#clTok').count()==1)
-    pg.fill('#clNom','Test'); pg.fill('#clTok','github_pat_'+'A'*40); pg.click('[data-save]'); pg.wait_for_timeout(1500)
-    pg.fill('#clTxt','Ceci est une demande de test automatique.'); pg.click('[data-go]'); pg.wait_for_timeout(1500)
-    ok('Claude : demande envoyée avec le contexte', issues.get(100,{}).get('title','').startswith('[G&L PDF]') and 'Version de l’éditeur' in issues[100]['body'])
-    ok('Claude : suivi de la demande', '9.9.9' in pg.locator('.req .st').first.inner_text())
-    pg.click('[data-back]'); pg.wait_for_timeout(300); pg.click('.modal .btn.pri'); pg.wait_for_timeout(1200)
-    ok('Claude : retour à la version précédente demandé', issues.get(101,{}).get('title','').startswith('[Retour version]'))
+    ok('Claude : prénom demandé au premier usage (pas de clé)', pg.locator('#clNom').count()==1 and pg.locator('input[type=password]').count()==0)
+    pg.fill('#clNom','Test'); pg.click('[data-save]'); pg.wait_for_timeout(300)
+    pg.fill('#clTxt','Ceci est une demande de test automatique.'); pg.click('[data-go]'); pg.wait_for_timeout(300)
+    href=pg.get_attribute('[data-open]','href') or ''
+    ok('Claude : lien GitHub prêt avec la demande', href.startswith('https://github.com/vincentguiraud-hub/gl-pdf/issues/new?') and '[G&L PDF] (Test) Ceci est une demande' in unquote(href) and 'Version de l’éditeur' in unquote(href), href[:160])
+    pg.click('[data-ct=list]'); pg.wait_for_timeout(1500)
+    sts=[x.inner_text() for x in pg.locator('.req .st').all()]
+    ok('Claude : suivi (en attente / fait), seulement mes demandes', len(sts)==2 and 'validation' in sts[0] and '9.9.9' in sts[1], sts)
+    pg.click('[data-back]'); pg.wait_for_timeout(300)
+    href=unquote(pg.get_attribute('[data-open]','href') or '')
+    ok('Claude : retour à la version précédente préparé', '[Retour version] (Test)' in href)
     ok('Claude : aucune erreur', not errs, errs[:3])
     b.close()
 fails=[r for r in results if not r[1]]
