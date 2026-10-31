@@ -10,6 +10,7 @@ with sync_playwright() as pw:
     b=pw.chromium.launch()
     # ---- polices : analyse visuelle (noms codés et noms trompeurs)
     pg=b.new_page(viewport={'width':1366,'height':900},accept_downloads=True); errs=[]; pg.on('pageerror',lambda e:errs.append(str(e)))
+    warns=[]; pg.on('console',lambda m: m.type in ('warning','error') and warns.append(m.text[:200]))
     pg.goto(APP); pg.wait_for_timeout(1200)
     pg.set_input_files('#fOpen',S+'/obf.pdf'); pg.wait_for_timeout(2000)
     want=['Barlow Condensed','PT Serif','IBM Plex Mono','Lato','Fira Sans Extra Condensed','Ubuntu',('Arimo','Liberation Sans'),('Liberation Serif','Tinos'),'DejaVu Serif','DejaVu Sans Condensed']
@@ -23,7 +24,8 @@ with sync_playwright() as pw:
     tops=[pg.evaluate(f"window.__glAnalyse(0,{j})")['res'][0][0] for j in range(3)]
     det=pg.evaluate("window.__glAnalyse(0,0)")
     print('DETAIL', det, pg.evaluate("[...document.fonts].filter(f=>/PTSerif|Gelasio/.test(f.family)).map(f=>f.family+':'+f.status)"), flush=True)
-    ok('analyse visuelle : noms trompeurs', tops==['PT Serif','Barlow Semi Condensed','Poppins'], [tops, det['res'][:4]])
+    cand=pg.evaluate("(async()=>{const S=window.__glState();return 0})()")
+    ok('analyse visuelle : noms trompeurs', tops==['PT Serif','Barlow Semi Condensed','Poppins'], [tops, det['res'][:3], warns[:6]])
     # modification avec lettres absentes : écrites dans la police la plus proche
     pg.set_input_files('#fOpen',S+'/din.pdf'); pg.wait_for_timeout(2000)
     pg.click('[data-t=edit]'); l=pg.locator('.ti').nth(1); bb=l.bounding_box(); pg.mouse.click(bb['x']+bb['width']-2,bb['y']+bb['height']/2); pg.wait_for_timeout(2500)
