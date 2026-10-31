@@ -25,7 +25,7 @@ with sync_playwright() as pw:
     det=pg.evaluate("window.__glAnalyse(0,0)")
     print('DETAIL', det, pg.evaluate("[...document.fonts].filter(f=>/PTSerif|Gelasio/.test(f.family)).map(f=>f.family+':'+f.status)"), flush=True)
     cand=pg.evaluate("(async()=>{const S=window.__glState();return 0})()")
-    ok('analyse visuelle : noms trompeurs', tops==['PT Serif','Barlow Semi Condensed','Poppins'], [tops, det['res'][:3], warns[:6]])
+    ok('analyse visuelle : noms trompeurs', tops==['PT Serif','Barlow Semi Condensed','Poppins'], [tops, det['geo'], det['cands']])
     # modification avec lettres absentes : écrites dans la police la plus proche
     pg.set_input_files('#fOpen',S+'/din.pdf'); pg.wait_for_timeout(2000)
     pg.click('[data-t=edit]'); l=pg.locator('.ti').nth(1); bb=l.bounding_box(); pg.mouse.click(bb['x']+bb['width']-2,bb['y']+bb['height']/2); pg.wait_for_timeout(2500)

@@ -3574,7 +3574,7 @@ async function save(saveAs){
 const downloadsP = (window.claude && window.claude.use) ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null);
 $('#bSave').onclick = () => save(false);
 window.__glSaveAs = () => save(true);
-window.__glAnalyse = async (i, j) => { const p = S.pages[i], its = await getItems(p), it = its[j]; const r = await fpVisual(p, it, fpCands({}, '', it)); return { str: it.str, res: (r || []).slice(0, 5).map(x => [x.label, Math.round(x.sim * 1000) / 1000, Math.round(x.iou * 1000) / 1000, Math.round(x.wr * 100) / 100, x.pct, x.vs]) }; };
+window.__glAnalyse = async (i, j) => { const p = S.pages[i], its = await getItems(p), it = its[j]; const cs = fpCands({}, '', it); const r = await fpVisual(p, it, cs); return { geo: [it.w, it.fh, it.x], cands: cs.map(c => c.label), str: it.str, res: (r || []).slice(0, 5).map(x => [x.label, Math.round(x.sim * 1000) / 1000, Math.round(x.iou * 1000) / 1000, Math.round(x.wr * 100) / 100, x.pct, x.vs]) }; };
 window.__glState = () => S; // lecture seule, utilisé par les tests automatiques
 window.__glRestart = async () => { if (await confirmDiscard() && window.glApp) window.glApp.restart(); };
 $('#bUndo').onclick = undo; $('#bRedo').onclick = redo;
