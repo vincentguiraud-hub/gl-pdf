@@ -34,7 +34,7 @@ jobs:
       NUM: ${{ github.event.issue.number }}
       TITRE: ${{ github.event.issue.title }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -48,10 +48,10 @@ jobs:
             gh issue comment "$NUM" --repo "$GITHUB_REPOSITORY" --body "⏳ Claude a bien reçu votre demande et s’en occupe. Comptez 5 à 30 minutes. La correction ne sera publiée que si tous les tests automatiques passent."
           fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Outils de construction et de test
@@ -138,14 +138,14 @@ jobs:
               # un deuxième essai pour écarter un test simplement lent
               python3 tests/$s.py > build/$s.log 2>&1 || { ok=0; tail -n 25 build/$s.log > build/echec.txt; }
             fi
-            echo "::notice title=$s::$(grep -E 'réussis' build/$s.log | tail -n 1)"
-            grep -E '^ ✗' build/$s.log | head -n 5 | while read -r l; do echo "::warning title=$s::$l"; done
+            echo "::notice title=$s::$(grep -E 'réussis' build/$s.log | tail -n 1 || true)"
+            { grep -E '^ ✗' build/$s.log || true; } | head -n 5 | while read -r l; do echo "::warning title=$s::$l"; done
           done
           if [ $ok = 0 ]; then echo "tests=echec" >> "$GITHUB_OUTPUT"; [ "$ACTION" = "VERIFIER" ] && exit 1; exit 0; fi
           echo "tests=ok" >> "$GITHUB_OUTPUT"
           if [ "$ACTION" = "VERIFIER" ]; then exit 0; fi
 
-          NOTES=$(head -n 1 build/resume.md 2>/dev/null | cut -c1-200)
+          NOTES=$(grep -v '^[[:space:]]*$' build/resume.md 2>/dev/null | head -n 1 | sed 's/^[#*> -]*//; s/\*\*//g' | cut -c1-200 || true)
           [ -n "$NOTES" ] || NOTES="Corrections demandées depuis le logiciel"
           python3 tools/release.py publier "$NOTES"
           V=$(python3 -c "import json;print(json.load(open('latest.json'))['version'])")
