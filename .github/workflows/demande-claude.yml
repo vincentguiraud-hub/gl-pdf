@@ -138,9 +138,10 @@ jobs:
               # un deuxième essai pour écarter un test simplement lent
               python3 tests/$s.py > build/$s.log 2>&1 || { ok=0; tail -n 25 build/$s.log > build/echec.txt; }
             fi
-            tail -n 3 build/$s.log
+            echo "::notice title=$s::$(grep -E 'réussis' build/$s.log | tail -n 1)"
+            grep -E '^ ✗' build/$s.log | head -n 5 | while read -r l; do echo "::warning title=$s::$l"; done
           done
-          if [ $ok = 0 ]; then echo "tests=echec" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [ $ok = 0 ]; then echo "tests=echec" >> "$GITHUB_OUTPUT"; [ "$ACTION" = "VERIFIER" ] && exit 1; exit 0; fi
           echo "tests=ok" >> "$GITHUB_OUTPUT"
           if [ "$ACTION" = "VERIFIER" ]; then exit 0; fi
 
