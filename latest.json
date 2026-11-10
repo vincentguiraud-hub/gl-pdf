@@ -1,8 +1,8 @@
 {
- "version": "1.6.1",
+ "version": "1.6.2",
  "file": "editeur.html",
- "sha256": "53270e0186490abb5fe5721cbbac370f3200ab97e07f7aaf6fe433550272982a",
- "notes": "Demander à Claude sans clé : la demande s’ouvre sur GitHub, Vincent valide en répondant ok",
+ "sha256": "5a55bae70c80071a86a8cd8aaa750d360c6a8094a75a2a2a491bb93c3766f833",
+ "notes": "Plus de bandeau gris sur les lignes de texte modifiées",
  "historique": [
   {
    "version": "1.5.4",
@@ -21,6 +21,12 @@
    "contenu": "1.6.1",
    "date": "2026-10-31",
    "notes": "Demander à Claude sans clé : la demande s’ouvre sur GitHub, Vincent valide en répondant ok"
+  },
+  {
+   "version": "1.6.2",
+   "contenu": "1.6.2",
+   "date": "2026-11-10",
+   "notes": "Plus de bandeau gris sur les lignes de texte modifiées"
   }
  ]
 }

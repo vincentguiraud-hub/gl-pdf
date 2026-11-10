@@ -38,6 +38,23 @@ with sync_playwright() as pw:
     ok('texte modifié enregistré', 'QUEZAC 2026 XYZ' in subprocess.run(['pdftotext',p,'-'],capture_output=True,text=True).stdout)
     ok('police intégrée au PDF', 'Barlow' in subprocess.run(['pdffonts',p],capture_output=True,text=True).stdout)
     ok('polices : aucune erreur', not errs, errs[:3])
+    # ---- modifier une ligne ne doit laisser aucun bandeau gris (fond blanc = blanc pur ; fond coloré conservé)
+    pg.set_input_files('#fOpen',S+'/fond.pdf'); pg.wait_for_timeout(2000)
+    pg.click('[data-t=edit]'); pg.wait_for_timeout(300)
+    boxes=sorted([pg.locator('.ti').nth(k).bounding_box() for k in range(pg.locator('.ti').count())], key=lambda r: r['y'])
+    for bb in boxes:
+        pg.mouse.click(bb['x']+bb['width']-2,bb['y']+bb['height']/2); pg.wait_for_timeout(1500)
+        pg.keyboard.press('End'); pg.keyboard.type(' OK'); pg.wait_for_timeout(200); pg.keyboard.press('Escape'); pg.mouse.click(1300,880); pg.wait_for_timeout(300)
+    bgs=pg.evaluate("window.__glState().pages[0].objs.filter(o=>o.wipe).map(o=>o.bg)")
+    ok('modifier : fond blanc recouvert en blanc pur, fond gris conservé', len(bgs)==2 and bgs[0]=='#ffffff' and bgs[1]!='#ffffff' and abs(int(bgs[1][1:3],16)-217)<=6, bgs)
+    with pg.expect_download() as d: pg.click('#bSave')
+    p=OUT+'/fond-out.pdf'; shutil.copy(d.value.path(), p)
+    subprocess.run(['pdftoppm','-r','72','-png','-singlefile',p,OUT+'/fond'],check=True)
+    from PIL import Image
+    im=Image.open(OUT+'/fond.png').convert('RGB')
+    # haut de la zone recouverte (au-dessus des lettres) : là où un bandeau gris apparaîtrait
+    px=[im.getpixel((x,y)) for x in range(70,290) for y in range(69,72)]
+    ok('enregistré : aucun bandeau gris sur fond blanc', min(min(c) for c in px)>=250, min(min(c) for c in px))
     # ---- téléphone
     d=dict(pw.devices['iPhone 13']); d.pop('default_browser_type',None)
     ctx=b.new_context(**d, accept_downloads=True); pg=ctx.new_page(); errs=[]

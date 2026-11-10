@@ -1478,10 +1478,14 @@ function sampleColor(el, b){
     for (let i = 0; i < d.length; i += 4){
       const l = d[i] * .3 + d[i+1] * .59 + d[i+2] * .11;
       if (l < best){ best = l; col = [d[i], d[i+1], d[i+2]]; }
-      const kk = (d[i] >> 4) + ',' + (d[i+1] >> 4) + ',' + (d[i+2] >> 4); bgCount[kk] = (bgCount[kk] || 0) + 1;
+      // couleur du fond : groupe de teintes le plus fréquent, puis moyenne RÉELLE de ce groupe (le blanc reste #ffffff)
+      const kk = (d[i] >> 4) + ',' + (d[i+1] >> 4) + ',' + (d[i+2] >> 4); const g = bgCount[kk] || (bgCount[kk] = [0, 0, 0, 0]);
+      g[0]++; g[1] += d[i]; g[2] += d[i+1]; g[3] += d[i+2];
     }
-    let top = null, n = 0; for (const kk in bgCount) if (bgCount[kk] > n){ n = bgCount[kk]; top = kk; }
-    if (top) bg = top.split(',').map(v => Math.min(255, (+v << 4) + 8));
+    let top = null, n = 0; for (const kk in bgCount) if (bgCount[kk][0] > n){ n = bgCount[kk][0]; top = bgCount[kk]; }
+    if (top) bg = [1, 2, 3].map(j => Math.round(top[j] / top[0]));
+    // presque blanc (papier, antialiasing) = blanc
+    if (bg.every(v => v >= 245)) bg = [255, 255, 255];
     const hex = a => '#' + a.map(v => v.toString(16).padStart(2, '0')).join('');
     return { fg: best > 200 ? '#000000' : hex(col), bg: hex(bg) };
   } catch(e){ return { fg: '#000000', bg: '#ffffff' }; }
