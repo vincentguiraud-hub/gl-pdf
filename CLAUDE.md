@@ -17,7 +17,7 @@ dans un navigateur et sur iPhone. Les utilisateurs sont artisans, pas informatic
 
 Repères dans `src/gl-pdf.html` : `const S = {` (état), `function renderCtx` (barre contextuelle),
 `async function resolveFont` / `fpVisual` (polices), `async function buildPdf` (enregistrement),
-`TOOL_GROUPS` et `ACT.` (panneau Outils), `function toast` (messages), `@media (max-width:760px)` (téléphone).
+`fontScanTick` / `autoOcr` / `ocrPage` (détection d'office des polices ligne par ligne et lecture des scans), `TOOL_GROUPS` et `ACT.` (panneau Outils), `function toast` (messages), `@media (max-width:760px)` (téléphone).
 `window.__glState()` donne l'état aux tests.
 
 ## Comment travailler sur une demande

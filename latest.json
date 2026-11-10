@@ -1,8 +1,8 @@
 {
- "version": "1.6.2",
+ "version": "1.6.3",
  "file": "editeur.html",
- "sha256": "5a55bae70c80071a86a8cd8aaa750d360c6a8094a75a2a2a491bb93c3766f833",
- "notes": "Plus de bandeau gris sur les lignes de texte modifiées",
+ "sha256": "b0535e84189ea3b57de8089d5cd01352dbedeb29835135b2c97d55ad7c2cfeef",
+ "notes": "Police détectée d’office ligne par ligne ; texte des documents scannés modifiable",
  "historique": [
   {
    "version": "1.5.4",
@@ -27,6 +27,12 @@
    "contenu": "1.6.2",
    "date": "2026-11-10",
    "notes": "Plus de bandeau gris sur les lignes de texte modifiées"
+  },
+  {
+   "version": "1.6.3",
+   "contenu": "1.6.3",
+   "date": "2026-11-10",
+   "notes": "Police détectée d’office ligne par ligne ; texte des documents scannés modifiable"
   }
  ]
 }

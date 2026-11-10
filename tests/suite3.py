@@ -38,6 +38,36 @@ with sync_playwright() as pw:
     ok('texte modifié enregistré', 'QUEZAC 2026 XYZ' in subprocess.run(['pdftotext',p,'-'],capture_output=True,text=True).stdout)
     ok('police intégrée au PDF', 'Barlow' in subprocess.run(['pdffonts',p],capture_output=True,text=True).stdout)
     ok('polices : aucune erreur', not errs, errs[:3])
+    # ---- d'office : police de chaque ligne détectée dès l'ouverture de « Modifier le texte » (sans cliquer)
+    def attendre_polices(maxs=90):
+        for _ in range(maxs):
+            pg.wait_for_timeout(1000)
+            tis=pg.locator('.ti').all()
+            if tis and not pg.is_visible('#fScan') and all((x.get_attribute('title') or '').startswith('Police') for x in tis): return [x.get_attribute('title').split('\n')[0] for x in tis]
+        return [x.get_attribute('title').split('\n')[0] for x in pg.locator('.ti').all()]
+    pg.click('[data-t=select]'); pg.wait_for_timeout(200)
+    pg.set_input_files('#fOpen',S+'/obf.pdf'); pg.wait_for_timeout(1500); pg.click('[data-t=edit]')
+    t=attendre_polices()
+    fams=['Barlow Condensed','PT Serif','IBM Plex Mono','Lato Gras','Fira Sans Extra Condensed','Ubuntu',('Arimo','Liberation Sans'),('Liberation Serif','Tinos'),'DejaVu Serif','DejaVu Sans Condensed']
+    bons=sum(1 for x,w in zip(t,fams) if any(('Police : '+f+' (') in x for f in (w if isinstance(w,tuple) else (w,))))
+    ok('d’office : police de chaque ligne détectée (%d/10)'%bons, bons>=9, t)
+    # ---- document scanné : lecture automatique du texte, police ligne par ligne, modification et enregistrement
+    pg.click('[data-t=select]'); pg.wait_for_timeout(200)
+    pg.set_input_files('#fOpen',S+'/scan-polices.pdf'); pg.wait_for_timeout(1500); pg.click('[data-t=edit]')
+    t=attendre_polices(120)
+    attendu=[('Liberation Serif','Tinos'),('Arimo Gras','Liberation Sans Gras'),('Barlow Condensed',),('DejaVu Serif',),('Liberation Mono','Cousine')]
+    bons=sum(1 for x,w in zip(t,attendu) if any(('Police : '+f+' ') in x for f in w))
+    ok('scan : texte lu automatiquement (%d lignes)'%len(t), len(t)==5, t)
+    ok('scan : police de chaque ligne (%d/5)'%bons, bons>=4, t)
+    bb=pg.locator('.ti').nth(2).bounding_box(); pg.mouse.click(bb['x']+bb['width']-2,bb['y']+bb['height']/2); pg.wait_for_timeout(1500)
+    pg.keyboard.press('End'); pg.keyboard.type(' et garde-corps'); pg.wait_for_timeout(300)
+    ok('scan : ligne modifiée dans la police détectée', 'BarlowCondensed' in pg.evaluate("getComputedStyle(document.querySelector('.obj.txt .ed')).fontFamily"))
+    pg.keyboard.press('Escape'); pg.mouse.click(1300,880)
+    with pg.expect_download() as d: pg.click('#bSave')
+    p=OUT+'/scan-out.pdf'; shutil.copy(d.value.path(), p)
+    txt=subprocess.run(['pdftotext',p,'-'],capture_output=True,text=True).stdout
+    ok('scan : enregistré avec le nouveau texte (cherchable), sans l’ancien', 'en acier Corten et garde-corps' in txt and txt.count('acier Corten')==1, txt[:300])
+    ok('scan : police intégrée', 'BarlowCondensed' in subprocess.run(['pdffonts',p],capture_output=True,text=True).stdout)
     # ---- modifier une ligne ne doit laisser aucun bandeau gris (fond blanc = blanc pur ; fond coloré conservé)
     pg.set_input_files('#fOpen',S+'/fond.pdf'); pg.wait_for_timeout(2000)
     pg.click('[data-t=edit]'); pg.wait_for_timeout(300)

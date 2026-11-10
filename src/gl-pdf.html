@@ -220,7 +220,8 @@ button,.tool,.ti,.th{touch-action:manipulation;-webkit-tap-highlight-color:trans
 .saved .s img{max-height:48px;max-width:150px}
 .saved .s button{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;background:var(--steel);color:#fff;font-size:12px}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--steel);color:#fff;padding:10px 14px;border-radius:8px;display:flex;gap:12px;align-items:center;z-index:60;max-width:calc(100% - 32px);box-shadow:0 8px 24px rgba(0,0,0,.3);font-size:13px}
-.toast{pointer-events:none}.toast button,.toast a{color:#f0a37f;font-weight:600;pointer-events:auto}
+.toast{pointer-events:none}
+.fscan{position:fixed;left:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:40;background:var(--steel);color:#fff;font-size:12px;padding:6px 10px;border-radius:999px;opacity:.92;pointer-events:none;max-width:calc(100vw - 24px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.toast button,.toast a{color:#f0a37f;font-weight:600;pointer-events:auto}
 .busy{position:fixed;inset:0;display:grid;place-items:center;background:rgba(10,12,14,.35);z-index:70;color:#fff;font-weight:600;font-size:15px}
 @media (max-width:760px){.ctx{flex-wrap:nowrap;overflow-x:auto;white-space:nowrap;scrollbar-width:none}.ctx>*{flex:none}.main{grid-template-columns:1fr}.side{display:none}.fname{display:none}.tbtn .lb{display:none}}
 /* barre du haut : même ordre qu'avant sur ordinateur, menu « ⋯ » sur téléphone */
@@ -257,7 +258,8 @@ button,.tool,.ti,.th{touch-action:manipulation;-webkit-tap-highlight-color:trans
 </style>
 
 <div class="app tool-select" id="app">
-  <header class="top">
+  <div class="fscan" id="fScan" role="status" aria-live="polite" hidden></div>
+<header class="top">
     <div class="brand">G&amp;L <b>PDF</b></div>
     <button class="tbtn" id="bOpen" title="Ouvrir un PDF"><svg class="i" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="lb">Ouvrir</span></button>
     <button class="tbtn" id="bPages" title="Afficher les pages"><svg class="i" viewBox="0 0 24 24"><rect x="4" y="3" width="7" height="8" rx="1"/><rect x="13" y="3" width="7" height="8" rx="1"/><rect x="4" y="13" width="7" height="8" rx="1"/><rect x="13" y="13" width="7" height="8" rx="1"/></svg></button>
@@ -548,6 +550,7 @@ function updInfo(){
   thumbs.querySelectorAll('.th').forEach((t, i) => t.classList.toggle('cur', i === cur));
 }
 viewer.addEventListener('scroll', () => requestAnimationFrame(updInfo), { passive: true });
+let fscanT = 0; viewer.addEventListener('scroll', () => { if (S.tool !== 'edit') return; clearTimeout(fscanT); fscanT = setTimeout(fontScanTick, 400); }, { passive: true });
 
 function setZoom(s, keepCenter, anchor){
   s = Math.max(0.3, Math.min(4, s));
@@ -1081,7 +1084,7 @@ async function getItems(p){
     } else { cur = t; lines.push(cur); }
     if (it.hasEOL) cur = null;
   }
-  (p.ocr || []).forEach(w => lines.push({ str: w.text, x: w.x, base: w.y + w.h * 0.8, w: w.w, fh: w.h * 0.95, fontName: 'ocr', family: '', ocr: true }));
+  (p.ocr || []).forEach(w => lines.push({ str: w.text, x: w.x, base: w.base != null ? w.base : w.y + w.h * 0.8, w: w.w, fh: w.rh ? w.rh * 1.12 : w.h * 0.95, fontName: 'ocr', family: '', ocr: true }));
   const list = lines.map(l => (delete l.space, l)).filter(l => l.str.trim());
   list.vert = vert;
   S.items[k] = list; return list;
@@ -1156,6 +1159,11 @@ function fpWidth(m, str){
 }
 
 /* ---------- analyse visuelle de la police : on compare le dessin réel des lettres ---------- */
+/* texte scanné : pas de nom de police et une taille seulement estimée -> on compare avec TOUTE la bibliothèque */
+function visCands(info, base, it){
+  if (it && it.ocr) return fpList().map(f => ({ id: f.id, fam: f.fam, label: fpLabel(f) }));
+  return fpCands(info, base, it);
+}
 function fpCands(info, base, it){
   const out = new Map(), add = arr => arr.forEach(x => { if (!out.has(x.id)) out.set(x.id, x); });
   add(fpRank(info, base, it).slice(0, 12));
@@ -1208,16 +1216,18 @@ async function fpVisual(p, it, cands){
     return { sim: iou * Math.exp(-Math.abs(Math.log(r)) * 2.5), iou, wr: r };
   };
   const out = [];
-  for (const c of cands){ const pk = await fpLoad(c.id); if (pk) out.push(Object.assign({}, c, score(pk, 1), { vs: 1, pk })); }
+  for (const c of cands){ const pk = c.css ? { css: c.css } : await fpLoad(c.id); if (pk) out.push(Object.assign({}, c, score(pk, 1), { vs: 1, pk })); }
   out.sort((a, b) => b.sim - a.sim);
   // hauteur des lettres : pour les meilleures, on cherche la taille qui colle au texte imprimé
-  for (const c of out.slice(0, 3)){
-    for (const f of [0.88, 0.92, 0.95, 0.975, 1.025, 1.05, 1.08, 1.12]){ const r = score(c.pk, f); if (r.iou > c.iou + 0.01) Object.assign(c, { iou: r.iou, sim: r.iou * Math.exp(-Math.abs(Math.log(c.wr)) * 2.5), vs: f }); }
+  for (const c of out.slice(0, it.ocr ? 10 : 3)){
+    for (const f of it.ocr ? [0.8, 0.85, 0.9, 0.94, 0.97, 1.03, 1.06, 1.1, 1.15, 1.2] : [0.88, 0.92, 0.95, 0.975, 1.025, 1.05, 1.08, 1.12]){ const r = score(c.pk, f); if (r.iou > c.iou + 0.01) Object.assign(c, { iou: r.iou, sim: r.iou * Math.exp(-Math.abs(Math.log(c.wr)) * 2.5), vs: f }); }
   }
   out.forEach(c => delete c.pk);
   out.sort((a, b) => b.sim - a.sim);
   // 100 % = même dessin de lettres (le rendu à l'écran n'est jamais parfaitement identique au pixel près)
-  out.forEach(x => { x.pct = Math.max(0, Math.min(100, Math.round(x.sim / 0.88 * 100))); });
+  // un scan est toujours un peu flou : 100 % y correspond à une ressemblance plus faible qu'avec du texte numérique
+  const full = it.ocr ? 0.7 : 0.88;
+  out.forEach(x => { x.pct = Math.max(0, Math.min(100, Math.round(x.sim / full * 100))); });
   return out;
 }
 /* classe les polices de la bibliothèque de la plus proche à la moins proche */
@@ -1299,16 +1309,32 @@ async function findLocal(base, bold, italic){
   const buf = new Uint8Array(await (await f.blob()).arrayBuffer());
   return { bytes: buf, label: f.fullName || f.postscriptName };
 }
-async function resolveFont(p, fontId, sample, forceLocal, it){
+/* une police par ressource du PDF ; pour un document scanné, une analyse par ligne (chaque ligne peut avoir sa police) */
+function fontKey(p, fontId, it){
+  if (it && it.ocr) return p.doc + '|ocr|' + p.id + '|' + Math.round(it.x) + ',' + Math.round(it.base);
+  let raw = ''; try { const pr = proxy(p); if (pr.commonObjs.has(fontId)) raw = (pr.commonObjs.get(fontId) || {}).name || ''; } catch(e){}
+  return p.doc + '|' + (raw || fontId);
+}
+const FM_PENDING = {};
+async function resolveFont(p, fontId, sample, forceLocal, it, quiet){
+  if (forceLocal) return resolveFont0(p, fontId, sample, true, it, quiet);
+  const k = fontKey(p, fontId, it);
+  // la même police est peut-être déjà en cours d'analyse (en arrière-plan) : on attend son résultat
+  if (FM_PENDING[k]){ if (!quiet) busy(true, 'Analyse de la police…'); try { await FM_PENDING[k]; } catch(e){} finally { if (!quiet) busy(false); } }
+  const pr = resolveFont0(p, fontId, sample, false, it, quiet); FM_PENDING[k] = pr;
+  try { return await pr; } finally { if (FM_PENDING[k] === pr) delete FM_PENDING[k]; }
+}
+async function resolveFont0(p, fontId, sample, forceLocal, it, quiet){
   const pr = proxy(p); let info = {};
-  try { if (pr.commonObjs.has(fontId)) info = pr.commonObjs.get(fontId) || {}; } catch(e){}
-  const raw = info.name || '', base = stripSub(raw), k = p.doc + '|' + (raw || fontId);
+  const ocr = !!(it && it.ocr);
+  try { if (!ocr && pr.commonObjs.has(fontId)) info = pr.commonObjs.get(fontId) || {}; } catch(e){}
+  const raw = info.name || '', base = stripSub(raw), k = fontKey(p, fontId, it);
   // la bibliothèque de polices doit être prête avant de choisir (iPhone : téléchargement en arrière-plan)
-  if (!FP.list){ busy(true, 'Chargement des polices…'); try { await fpFetch(); } catch(err){} finally { busy(false); } }
+  if (!FP.list){ if (!quiet) busy(true, 'Chargement des polices…'); try { await fpFetch(); } catch(err){} finally { if (!quiet) busy(false); } }
   const old = FM.map[k];
   if (old && !forceLocal && (old.subs || !fpList().length)) return old;   // sinon : on complète avec la police la plus proche
-  const g = guessStd(base, info.fallbackName || ''), e = FM.map[k] || { key: k, label: base || 'Police non nommée', std: g.std, bold: g.bold || !!info.bold, italic: g.italic || !!info.italic, src: 'std' };
-  if (!e.reuse && !forceLocal){
+  const g = guessStd(base, info.fallbackName || ''), e = FM.map[k] || { key: k, label: ocr ? 'Texte scanné' : base || 'Police non nommée', std: g.std, bold: g.bold || !!info.bold, italic: g.italic || !!info.italic, src: 'std', ocr };
+  if (!e.reuse && !forceLocal && !ocr){
     try {
       const tu = info.toUnicode, fc = info.toFontChar, cm = info.cMap;
       const twoByte = info.composite && cm && Array.isArray(cm.codespaceRanges) && (cm.codespaceRanges[1] || []).length === 2 && cm.codespaceRanges[1][0] === 0 && cm.codespaceRanges[1][1] === 65535 && !(cm.codespaceRanges[0] || []).length && !(cm.codespaceRanges[2] || []).length && !(cm._map || []).length;
@@ -1332,8 +1358,10 @@ async function resolveFont(p, fontId, sample, forceLocal, it){
       }
     } catch(err){ console.warn(err); }
   }
-  if (!e.bytes && !forceLocal){
-    try { const by = await extractEmbedded(p.doc, raw); const f = by && parseFont(by); if (f && covers(f, sample)){ e.bytes = by; e.fk = f; if (!e.reuse) e.src = 'pdf'; } } catch(err){ console.warn(err); }
+  if (!e.bytes && !forceLocal && !ocr){
+    // police intégrée au PDF : gardée comme police complète seulement si elle contient tout l'alphabet
+    // (sinon c'est un extrait : les lettres absentes seront écrites dans la police la plus ressemblante)
+    try { const by = await extractEmbedded(p.doc, raw); const f = by && parseFont(by); if (f && covers(f, sample) && (!e.reuse || covers(f, 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'))){ e.bytes = by; e.fk = f; if (!e.reuse) e.src = 'pdf'; } } catch(err){ console.warn(err); }
   }
   if (!e.bytes && !e.reuse && base){
     try { const r = await findLocal(base, e.bold, e.italic); const f = r && parseFont(r.bytes); if (f){ e.bytes = r.bytes; e.fk = f; e.src = 'local'; e.label = r.label; } } catch(err){ console.warn(err); }
@@ -1343,11 +1371,24 @@ async function resolveFont(p, fontId, sample, forceLocal, it){
   if (!e.subs && fpList().length){
     try { e.subs = fpRank(info, base, it).slice(0, 8); } catch(err){ e.subs = []; console.warn(err); }
     // analyse visuelle : le dessin des lettres sur la page décide (le nom de la police peut tromper)
-    if (!e.bytes && it && it.str && it.str.trim().length >= 2){
-      busy(true, 'Analyse de la police…');
-      try { const v = await fpVisual(p, it, fpCands(info, base, it)); if (v && v.length){ e.subs = v.slice(0, 8); e.visual = true; } }
+    if (it && it.str && it.str.trim().length >= 2){
+      if (!quiet) busy(true, 'Analyse de la police…');
+      try {
+        const cands = visCands(info, base, it);
+        // police de l'ordinateur trouvée d'après le nom : elle doit ressembler au dessin réel, sinon on l'écarte
+        if (e.src === 'local' && e.bytes){
+          if (!e.css){ e.css = 'glf_' + uid(); try { const ff = new FontFace(e.css, e.bytes.slice(0)); await ff.load(); document.fonts.add(ff); } catch(err){ e.css = null; } }
+          if (e.css) cands.unshift({ id: '__local', css: e.css, label: e.label, fam: e.label });
+        }
+        const v = await fpVisual(p, it, cands);
+        if (v && v.length){
+          const loc = v.find(x => x.id === '__local');
+          if (e.src === 'local' && loc && loc.sim < v[0].sim - 0.03){ e.bytes = null; e.fk = null; e.css = null; e.src = 'std'; e.label = base || e.label; }
+          e.subs = v.filter(x => x.id !== '__local').slice(0, 8); e.visual = true;
+        }
+      }
       catch(err){ console.warn('analyse visuelle', err); }
-      finally { busy(false); }
+      finally { if (!quiet) busy(false); }
     }
   }
   if (!e.bytes && e.subs && e.subs.length){
@@ -1462,12 +1503,82 @@ async function buildTextLayer(el){
   const s = S.scale;
   items.forEach((it, i) => {
     if (!it || !it.str.trim() || used.has(i)) return;
-    const sp = document.createElement('span'); sp.className = 'ti'; sp.title = 'Cliquer pour modifier ce texte';
+    const sp = document.createElement('span'); sp.className = 'ti'; sp.dataset.i = i; sp.title = lineFontTitle(FM.map[fontKey(p, it.fontName, it)]);
     Object.assign(sp.style, { left: (it.x - 1) * s + 'px', top: (it.base - it.fh * 0.95) * s + 'px', width: (it.w + 2) * s + 'px', height: it.fh * 1.2 * s + 'px' });
     sp.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); });
     sp.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); holdKeyboard(); editItem(el, i, it, e.clientX, e.clientY); });
     tl.appendChild(sp);
   });
+  setTimeout(fontScanTick, 0);
+}
+/* ---------- « Modifier le texte » : d'office, lecture des pages scannées et analyse de la police de chaque ligne, en arrière-plan ---------- */
+const FSCAN = { done: new Set(), busy: false, warned: false };
+const OCR_CACHE = {};
+function fscanShow(txt){ const e = document.getElementById('fScan'); if (!e) return; e.textContent = txt || ''; e.hidden = !txt; }
+function lineFontTitle(fe){
+  if (!fe) return 'Cliquer pour modifier ce texte';
+  const sub = fe.subs && fe.subs[0];
+  const coded = !fe.label || /^([A-Z]{1,3}\d+|Police non nommée|[A-Z]\d*_\d+)$/i.test(fe.label);
+  const name = fe.src === 'reuse' || fe.src === 'pdf' ? (coded && sub ? sub.label : fe.label) + ' (police du document)'
+    : fe.src === 'local' ? fe.label
+    : fe.subLabel ? fe.subLabel + (sub && sub.pct != null && sub.id === fe.packId ? ' — ressemblance ' + sub.pct + ' %' : '') : fe.label;
+  return 'Police : ' + name + (fe.ocr ? ' (texte scanné)' : '') + '\nCliquer pour modifier ce texte';
+}
+const scanKey = p => p.id + '@' + key(p) + '@' + totalRot(p) + '#' + (p.ocr ? p.ocr.length : 0);
+/* page scannée (aucun texte) : lecture du texte par OCR, une seule fois par page */
+async function autoOcr(p, el){
+  const ck = p.id + '@' + key(p) + '@' + totalRot(p);
+  if (OCR_CACHE[ck]){ p.ocr = OCR_CACHE[ck]; S.items = {}; return true; }
+  if (!(await ensureOcr())){
+    if (!FSCAN.warned){ FSCAN.warned = true; toast('Page scannée : pour modifier son texte, il faut la lecture du texte (OCR), disponible dans le logiciel PC et dans la version en ligne avec internet.'); }
+    return false;
+  }
+  const n = S.pages.indexOf(p) + 1;
+  fscanShow('Page ' + n + ' scannée : lecture du texte…');
+  const w = await getOcr(), r = await ocrPage(p, w);
+  OCR_CACHE[ck] = r.lines;
+  if (!r.lines.length) return false;
+  p.ocr = r.lines; S.items = {};
+  toast('Page ' + n + ' scannée : ' + r.lines.length + ' ligne(s) reconnue(s). Cliquez sur une ligne pour la modifier.');
+  return true;
+}
+/* analyse la police de chaque ligne d'une page (les résultats servent dès qu'on clique sur une ligne) */
+async function scanPageFonts(el){
+  const p = el._p, items = await getItems(p), spans = [...el.querySelectorAll('.tl .ti')], n = S.pages.indexOf(p) + 1;
+  let k = 0;
+  for (const sp of spans){
+    if (S.tool !== 'edit' || !sp.isConnected) return false;
+    const it = items[+sp.dataset.i]; k++;
+    if (!it) continue;
+    fscanShow('Détection des polices : page ' + n + ', ligne ' + k + ' / ' + spans.length);
+    try { const fe = await resolveFont(p, it.fontName, it.str, false, it, true); sp.title = lineFontTitle(fe); sp.dataset.font = fe.subLabel || fe.label || ''; } catch(e){ console.warn('police ligne', e); }
+    await new Promise(r => setTimeout(r, 0));
+  }
+  return true;
+}
+async function fontScanTick(){
+  if (FSCAN.busy || S.tool !== 'edit' || !S.pages.length) return;
+  FSCAN.busy = true;
+  try {
+    for (let guard = 0; guard < 50; guard++){
+      if (S.tool !== 'edit') break;
+      const cur = currentPage() || S.pages[0], ci = Math.max(0, S.pages.indexOf(cur));
+      // la page affichée d'abord, puis ses voisines
+      const p = [ci, ci + 1, ci - 1, ci + 2].filter(i => i >= 0 && i < S.pages.length).map(i => S.pages[i]).find(q => !FSCAN.done.has(scanKey(q)));
+      if (!p) break;
+      const el = pageEl(p); if (!el || !el.querySelector('canvas')){ FSCAN.done.add(scanKey(p)); continue; }
+      const items = await getItems(p);
+      if (!items.length && !(items.vert || []).length && !p.ocr){
+        FSCAN.done.add(scanKey(p));
+        if (await autoOcr(p, el)){ await buildTextLayer(el); }
+        continue;
+      }
+      if (!el.querySelector('.tl .ti')) await buildTextLayer(el);
+      const ok = await scanPageFonts(el);
+      if (ok) FSCAN.done.add(scanKey(p)); else break;
+    }
+  } catch(e){ console.warn('détection des polices', e); }
+  finally { FSCAN.busy = false; fscanShow(''); }
 }
 function sampleColor(el, b){
   try {
@@ -2446,7 +2557,7 @@ function rotatePage(p, deg, silent){
     else if (o.type === 'text' || o.type === 'edit' || o.type === 'note'){ const q = m(o.x, o.y); o.x = q[0]; o.y = q[1]; if (o.wipe) o.wipe = box(o.wipe); }
     else Object.assign(o, box(o));
   });
-  if (p.ocr) p.ocr = p.ocr.map(w => Object.assign({}, w, box(w), { rot: ((w.rot || 0) + deg) % 360 }));
+  if (p.ocr) p.ocr = p.ocr.map(w => Object.assign({}, w, box(w), { rot: ((w.rot || 0) + deg) % 360, base: null, rh: null }));
   if (p.crop) p.crop = box(p.crop);
   if (!silent) renderAll(true);
 }
@@ -2798,7 +2909,47 @@ async function getOcr(onProg){
   ocrWorker = await Tesseract.createWorker('fra', 1, { workerPath: url, workerBlobURL: false, langPath: 'https://glpdf.local', cacheMethod: 'none', gzip: true, logger: m => onProg && onProg(m) });
   return ocrWorker;
 }
+/* lit le texte d'une page scannée : une entrée par ligne, avec sa ligne de base et la taille de ses lettres */
+async function ocrPage(p, w){
+  const v1 = getVP(p, 1), sc = Math.min(300 / 72, Math.sqrt(MAX_PX / (v1.width * v1.height)));
+  const vp = getVP(p, sc), c = document.createElement('canvas'); c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+  await proxy(p).render({ canvasContext: g, viewport: vp }).promise;
+  const r = await w.recognize(c);
+  const lines = []; let words = 0;
+  (r.data.lines || []).forEach(l => {
+    const t = (l.text || '').trim(); if (!t || (l.confidence != null && l.confidence < 35)) return;
+    const b = l.bbox, bl = l.baseline, ra = l.rowAttributes || {};
+    // ligne de base mesurée par l'OCR (au milieu de la ligne), sinon estimée
+    let base = null;
+    if (bl && bl.has_baseline !== false && isFinite(bl.y0) && isFinite(bl.y1) && bl.x1 > bl.x0){ const xm = (b.x0 + b.x1) / 2; base = bl.y0 + (bl.y1 - bl.y0) * (xm - bl.x0) / (bl.x1 - bl.x0); }
+    if (base == null || base < b.y0 || base > b.y1 + 2) base = null;
+    // taille des lettres : hauteur de ligne de l'OCR (minuscules + jambages), sinon hauteur du cadre
+    const rh = +ra.row_height || 0, asc = +ra.ascenders || 0, desc = +ra.descenders || 0;
+    lines.push({ text: t.replace(/\s+/g, ' '), x: b.x0 / sc, y: b.y0 / sc, w: (b.x1 - b.x0) / sc, h: (b.y1 - b.y0) / sc,
+      base: base != null ? base / sc : null, rh: rh ? rh / sc : null, asc: asc / sc, desc: Math.abs(desc) / sc });
+    words += t.split(/\s+/).length;
+  });
+  return { lines, words };
+}
+/* moteur OCR : intégré dans le logiciel ; téléchargé à la demande dans la version en ligne (iPhone) */
+let ocrLoading = null;
+function ensureOcr(){
+  if (HAS_OCR()) return Promise.resolve(true);
+  if (ocrLoading) return ocrLoading;
+  if (!/^https?:$/.test(location.protocol)) return Promise.resolve(false);
+  ocrLoading = (async () => {
+    const get = async f => { const r = await fetch('ocr/' + f, { cache: 'force-cache' }); if (!r.ok) throw new Error(f + ' ' + r.status); return r.text(); };
+    const [core, wk, fra, lib] = await Promise.all([get('core.js'), get('worker.js'), get('fra.b64.txt'), get('tesseract.min.js')]);
+    const add = (id, type, txt) => { const e = document.createElement('script'); e.type = type; e.id = id; e.textContent = txt; document.head.appendChild(e); };
+    add('tessCore', 'text/js-worker', core); add('tessWorker', 'text/js-worker', wk); add('tessFra', 'text/plain', fra);
+    if (!window.Tesseract){ const sc = document.createElement('script'); sc.textContent = lib; document.head.appendChild(sc); }
+    return HAS_OCR();
+  })().catch(e => { console.warn('OCR en ligne', e); ocrLoading = null; return false; });
+  return ocrLoading;
+}
 ACT.ocr = async () => {
+  await ensureOcr();
   if (!HAS_OCR()){ toast('La reconnaissance de texte (OCR) est disponible dans le logiciel Windows et la version hors connexion de G&L PDF.'); return; }
   const pagesNoText = []; for (const p of S.pages){ const it = await getItems(p); if (!it.length && !(it.vert || []).length) pagesNoText.push(p); }
   const v = await dialog('Scan et OCR', '<p style="margin:0 0 8px">' + (pagesNoText.length ? pagesNoText.length + ' page(s) sans texte (scannées) détectée(s).' : 'Toutes les pages contiennent déjà du texte.') + '</p><div class="form-grid"><label>Pages</label><select name="which"><option value="scan">Pages scannées uniquement</option><option value="all">Toutes les pages</option><option value="cur">Page affichée</option></select><label>Langue</label><span>Français</span></div><p class="hint">Le texte reconnu devient cherchable, sélectionnable et modifiable. L’image de la page n’est pas modifiée.</p>', 'Lancer la reconnaissance', form => {
@@ -2813,14 +2964,8 @@ ACT.ocr = async () => {
     const w = await getOcr();
     for (let k = 0; k < list.length; k++){
       const p = list[k]; progress('Reconnaissance du texte : page ' + (S.pages.indexOf(p) + 1) + ' (' + (k + 1) + '/' + list.length + ')', k / list.length);
-      const v1 = getVP(p, 1), sc = Math.min(300 / 72, Math.sqrt(MAX_PX / (v1.width * v1.height)));
-      const vp = getVP(p, sc), c = document.createElement('canvas'); c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
-      const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
-      await proxy(p).render({ canvasContext: g, viewport: vp }).promise;
-      const r = await w.recognize(c);
-      const lines = []; (r.data.lines || []).forEach(l => { const t = (l.text || '').trim(); if (!t || (l.confidence != null && l.confidence < 35)) return;
-        const b = l.bbox; lines.push({ text: t.replace(/\s+/g, ' '), x: b.x0 / sc, y: b.y0 / sc, w: (b.x1 - b.x0) / sc, h: (b.y1 - b.y0) / sc }); words += t.split(/\s+/).length; });
-      p.ocr = lines; S.items = {};
+      const r = await ocrPage(p, w); words += r.words;
+      p.ocr = r.lines; S.items = {};
     }
     busy(false);
     pushHist(before); renderAll(true);
@@ -3455,7 +3600,11 @@ async function buildPdf(opts){
     // texte reconnu par l'OCR : invisible mais cherchable et sélectionnable
     if (p.ocr && p.ocr.length){
       const f = F.helv[0], fk = pg.node.newFontDictionary('GLocr', f.ref), t = R * Math.PI / 180, cs = Math.cos(t), sn = Math.sin(t);
+      const wipes = p.objs.filter(o => o.type === 'edit' && o.wipe).map(o => o.wipe);
       for (const w of p.ocr){
+        // ligne modifiée : son ancien texte ne doit plus être trouvé par la recherche
+        const cx = w.x + w.w / 2, cy = w.y + w.h / 2;
+        if (wipes.some(r => cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h)) continue;
         const txt = safe(f, w.text); if (!txt.trim()) continue;
         const size = Math.max(2, w.h * 0.82), natural = f.widthOfTextAtSize(txt, size) || 1, a = P(w.x, w.y + w.h * 0.8);
         pg.pushOperators(PDFLib.pushGraphicsState(), PDFLib.beginText(), PDFLib.setFontAndSize(fk, size), PDFLib.setTextRenderingMode(PDFLib.TextRenderingMode.Invisible),
@@ -3597,7 +3746,8 @@ async function save(saveAs){
 const downloadsP = (window.claude && window.claude.use) ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null);
 $('#bSave').onclick = () => save(false);
 window.__glSaveAs = () => save(true);
-window.__glAnalyse = async (i, j) => { const p = S.pages[i], its = await getItems(p), it = its[j]; const cs = fpCands({}, '', it); const r = await fpVisual(p, it, cs); return { geo: [it.w, it.fh, it.x], cands: cs.map(c => c.label), str: it.str, res: (r || []).slice(0, 5).map(x => [x.label, Math.round(x.sim * 1000) / 1000, Math.round(x.iou * 1000) / 1000, Math.round(x.wr * 100) / 100, x.pct, x.vs]) }; };
+window.__glOcrPage = async i => { await ensureOcr(); const w = await getOcr(); return ocrPage(S.pages[i], w); };
+window.__glAnalyse = async (i, j) => { const p = S.pages[i], its = await getItems(p), it = its[j]; const cs = visCands({}, '', it); const r = await fpVisual(p, it, cs); return { geo: [it.w, it.fh, it.x], cands: cs.map(c => c.label), str: it.str, res: (r || []).slice(0, 5).map(x => [x.label, Math.round(x.sim * 1000) / 1000, Math.round(x.iou * 1000) / 1000, Math.round(x.wr * 100) / 100, x.pct, x.vs]) }; };
 window.__glState = () => S; // lecture seule, utilisé par les tests automatiques
 window.__glRestart = async () => { if (await confirmDiscard() && window.glApp) window.glApp.restart(); };
 $('#bUndo').onclick = undo; $('#bRedo').onclick = redo;
