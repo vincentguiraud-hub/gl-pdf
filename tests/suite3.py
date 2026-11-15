@@ -68,6 +68,37 @@ with sync_playwright() as pw:
     txt=subprocess.run(['pdftotext',p,'-'],capture_output=True,text=True).stdout
     ok('scan : enregistré avec le nouveau texte (cherchable), sans l’ancien', 'en acier Corten et garde-corps' in txt and txt.count('acier Corten')==1, txt[:300])
     ok('scan : police intégrée', 'BarlowCondensed' in subprocess.run(['pdffonts',p],capture_output=True,text=True).stdout)
+    # ---- une zone de texte déplacée sur une ligne effacée reste visible (les caches passent dessous)
+    pg.click('[data-t=select]'); pg.wait_for_timeout(200)
+    pg.set_input_files('#fOpen',S+'/fond.pdf'); pg.wait_for_timeout(1500)
+    pr=pg.locator('.page').first.bounding_box()
+    pg.click('[data-t=text]'); pg.wait_for_timeout(200); pg.mouse.click(pr['x']+90, pr['y']+500); pg.wait_for_timeout(300)
+    pg.keyboard.type('NOUVELLE ADRESSE'); pg.keyboard.press('Enter'); pg.keyboard.type('82270 MONTPEZAT'); pg.wait_for_timeout(200)
+    pg.click('[data-t=edit]'); pg.wait_for_timeout(2500)
+    bb=sorted([pg.locator('.ti').nth(k).bounding_box() for k in range(pg.locator('.ti').count())], key=lambda r: r['y'])[0]
+    pg.mouse.click(bb['x']+bb['width']-2, bb['y']+bb['height']/2); pg.wait_for_timeout(1500)
+    pg.keyboard.press('Control+a'); pg.keyboard.press('Delete'); pg.wait_for_timeout(200)
+    pg.click('[data-t=select]'); pg.wait_for_timeout(400)
+    tb=[o for o in pg.evaluate("window.__glState().pages[0].objs.map(o=>({id:o.id,type:o.type}))") if o['type']=='text'][0]
+    obj=pg.locator('.obj.txt[data-id="%s"]'%tb['id']); obj.locator('.ed').click(); pg.wait_for_timeout(200)
+    g=obj.locator('.grip').bounding_box(); e0=obj.locator('.ed').bounding_box()
+    # déplacer la zone de texte pile sur la ligne effacée
+    dx=bb['x']-e0['x']; dy=bb['y']-e0['y']
+    pg.mouse.move(g['x']+g['width']/2, g['y']+g['height']/2); pg.mouse.down(); pg.mouse.move(g['x']+g['width']/2+dx, g['y']+g['height']/2+dy, steps=10); pg.mouse.up(); pg.wait_for_timeout(500)
+    pg.mouse.click(1300,880); pg.wait_for_timeout(300)
+    ordre=pg.evaluate("[...document.querySelector('.page .objs').children].map(c=>c.className.split(' ')[0])")
+    ok('zone de texte déplacée sur une ligne effacée : caches dessous à l’écran', ordre.index('obj') > max(i for i,c in enumerate(ordre) if c=='wipe-under'), ordre)
+    e1=obj.locator('.ed').bounding_box(); shot=pg.screenshot(clip={'x':e1['x'],'y':e1['y'],'width':e1['width'],'height':e1['height']})
+    from PIL import Image; import io
+    im=Image.open(io.BytesIO(shot)).convert('L'); dark=sum(1 for v in im.getdata() if v<100)
+    ok('zone de texte déplacée : texte visible à l’écran', dark>150, dark)
+    with pg.expect_download() as d: pg.click('#bSave')
+    p=OUT+'/cache-out.pdf'; shutil.copy(d.value.path(), p)
+    txt=subprocess.run(['pdftotext',p,'-'],capture_output=True,text=True).stdout
+    subprocess.run(['pdftoppm','-r','72','-png','-singlefile',p,OUT+'/cache'],check=True)
+    im=Image.open(OUT+'/cache.png').convert('L')
+    zone=[im.getpixel((x,y)) for x in range(60,200) for y in range(68,86)]
+    ok('enregistré : texte de la zone déplacée visible (pas recouvert)', 'NOUVELLE ADRESSE' in txt and sum(1 for v in zone if v<100)>40, sum(1 for v in zone if v<100))
     # ---- modifier une ligne ne doit laisser aucun bandeau gris (fond blanc = blanc pur ; fond coloré conservé)
     pg.set_input_files('#fOpen',S+'/fond.pdf'); pg.wait_for_timeout(2000)
     pg.click('[data-t=edit]'); pg.wait_for_timeout(300)

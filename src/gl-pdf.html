@@ -709,6 +709,15 @@ function arrowHead(a, b, w){
 function drawObjs(el){
   const p = el._p, s = S.scale, layer = el.querySelector('.objs'), svg = el.querySelector('svg.ink');
   layer.innerHTML = ''; svg.innerHTML = '';
+  // les caches qui effacent l'ancien texte des lignes modifiées passent TOUJOURS sous les ajouts
+  // (zones de texte, signatures, images…), quel que soit l'ordre dans lequel ils ont été créés
+  p.objs.forEach(o => {
+    if ((o.type === 'text' || o.type === 'edit') && o.wipe){
+      const w = document.createElement('div'); w.className = 'wipe-under'; w.dataset.for = o.id;
+      Object.assign(w.style, { left: o.wipe.x * s + 'px', top: o.wipe.y * s + 'px', width: o.wipe.w * s + 'px', height: o.wipe.h * s + 'px', background: o.bg || '#ffffff' });
+      layer.appendChild(w);
+    }
+  });
   p.objs.forEach(o => {
     if (o.pts){ // ink, lines, arrows, strike-through and underline
       const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -721,11 +730,6 @@ function drawObjs(el){
       svg.appendChild(g); return;
     }
     if (o.type === 'text' || o.type === 'edit'){
-      if (o.wipe){
-        const w = document.createElement('div'); w.className = 'wipe-under';
-        Object.assign(w.style, { left: o.wipe.x * s + 'px', top: o.wipe.y * s + 'px', width: o.wipe.w * s + 'px', height: o.wipe.h * s + 'px', background: o.bg || '#ffffff' });
-        layer.appendChild(w);
-      }
       const d = document.createElement('div'); d.className = 'obj txt' + (S.sel === o.id ? ' sel' : ''); d.dataset.id = o.id;
       Object.assign(d.style, { left: o.x * s + 'px', top: o.y * s + 'px' });
       d.innerHTML = '<span class="grip" title="Déplacer">✥</span><button class="del" type="button" title="Supprimer">×</button>';
@@ -3524,6 +3528,13 @@ async function buildPdf(opts){
       const wm = S.doc.wm, col = hexToRgb(wm.color), fk = pg.node.newFontDictionary('GLwm', wmFont.ref), gs = pg.node.newExtGState('GLwmgs', out.context.obj({ Type: 'ExtGState', ca: wm.opacity / 100, CA: wm.opacity / 100 }));
       prepend(pg, 'q /' + gs.asString().slice(1) + ' gs ' + [col.red, col.green, col.blue].map(num).join(' ') + ' rg BT /' + fk.asString().slice(1) + ' ' + num(wm.size) + ' Tf ' + [wb.cs, wb.sn, -wb.sn, wb.cs, wb.x, wb.y].map(num).join(' ') + ' Tm ' + wmFont.encodeText(wm.text).toString() + ' Tj ET Q\n');
     }
+    // caches des lignes modifiées : dessinés d'abord, sous tous les ajouts
+    for (const o of p.objs){
+      if ((o.type === 'text' || o.type === 'edit') && o.wipe){
+        const fullyRemoved = o.type === 'edit' && (removed.get(o.id) || 0) >= (o.orig || '').replace(/\s/g, '').length && (o.orig || '').trim().length > 0;
+        if (!fullyRemoved){ const a = P(o.wipe.x, o.wipe.y + o.wipe.h); pg.drawRectangle({ x: a[0], y: a[1], width: o.wipe.w, height: o.wipe.h, rotate: rot, color: hexToRgb(o.bg || '#ffffff') }); }
+      }
+    }
     for (const o of p.objs){
       if (o.pts){
         const segs = [o.pts];
@@ -3565,8 +3576,6 @@ async function buildPdf(opts){
             for (let i = 1; i < pts.length; i++) pg.drawLine({ start: { x: pts[i-1][0], y: pts[i-1][1] }, end: { x: pts[i][0], y: pts[i][1] }, thickness: o.w * (mk === 'box' ? 0.1 : mk === 'line' ? 0.11 : 0.13), color: col, lineCap: LineCapStyle.Round }); }
         }
       } else if (o.type === 'text' || o.type === 'edit'){
-        const fullyRemoved = o.type === 'edit' && (removed.get(o.id) || 0) >= (o.orig || '').replace(/\s/g, '').length && (o.orig || '').trim().length > 0;
-        if (o.wipe && !fullyRemoved){ const a = P(o.wipe.x, o.wipe.y + o.wipe.h); pg.drawRectangle({ x: a[0], y: a[1], width: o.wipe.w, height: o.wipe.h, rotate: rot, color: hexToRgb(o.bg || '#ffffff') }); }
         const ofe = o.font === 'orig' ? FM.map[o.fkey] : null;
         const pkf = String(o.font).startsWith('pack:') ? await fpLoad(o.font.slice(5)) : null;
         const of = pkf ? await packFont(pkf) : ofe && ofe.fk ? await origFont(o.fkey) : null;
