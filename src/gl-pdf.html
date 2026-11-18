@@ -254,6 +254,38 @@ button,.tool,.ti,.th{touch-action:manipulation;-webkit-tap-highlight-color:trans
 .clw .req b{font-weight:600}.clw .req .st{font-size:12.5px}.clw .req .rp{font-size:13px;white-space:pre-wrap;color:var(--ink);opacity:.9;max-height:160px;overflow:auto}
 .clw .list{display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow:auto}
 .clw ol{margin:0;padding-left:20px;font-size:13px;line-height:1.55}
+/* CV */
+.stab{min-width:0}
+.cvc{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.cvc ul,.cvtips ul{margin:0;padding-left:18px;font-size:12.5px;line-height:1.45;color:var(--muted)}
+.cvh{display:flex;align-items:center;gap:8px}.cvh .hint{margin-left:auto;font-size:12px}
+.cvb{background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:11px;border-radius:4px;padding:2px 6px;letter-spacing:.04em}
+.card.cvw{width:min(1180px,100%);height:min(900px,100%)}
+.cvgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,400px);gap:16px;min-height:0;flex:1}
+.cvform{overflow:auto;min-height:0;display:flex;flex-direction:column;gap:12px;padding-right:4px}
+.cvprev{overflow:auto;min-height:0;background:var(--bg);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:8px}
+.cvpages{display:flex;flex-direction:column;gap:10px;align-items:center}.cvpages canvas{box-shadow:0 2px 10px rgba(0,0,0,.25);background:#fff}
+.cvpinfo{font-size:12.5px}
+.cvtips{background:rgba(180,85,45,.10);border-radius:8px;padding:8px 12px}.cvtips ul{margin-top:4px}
+.cvset{border:1px solid var(--line);border-radius:8px;padding:8px 12px 12px;margin:0;display:flex;flex-direction:column;gap:8px}
+.cvset legend{font-weight:700;padding:0 4px}
+.cvrow{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px 12px}
+.cvf{display:flex;flex-direction:column;gap:3px;font-size:12.5px}.cvf.full{grid-column:1/-1}.cvf>span{color:var(--muted)}.cvf small{color:var(--muted);font-size:11.5px}
+.cvf input,.cvf textarea,.cvf select{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 8px;font:inherit;font-size:13.5px;width:100%;box-sizing:border-box}
+.cvf textarea{resize:vertical}
+.cvitem{border-top:1px dashed var(--line);padding-top:8px;display:flex;flex-direction:column;gap:6px}
+.cvitem-h{display:flex;justify-content:space-between;align-items:center}.cvitem-h span{display:flex;gap:4px}
+.btn.sm{padding:3px 8px;font-size:12px}
+.cvcols{display:flex;gap:6px;flex-wrap:wrap}.cvcol{width:28px;height:28px;border-radius:50%;border:2px solid transparent;cursor:pointer}.cvcol[aria-pressed="true"]{border-color:var(--ink);box-shadow:0 0 0 2px var(--panel) inset}
+.cvph{width:44px;height:55px;object-fit:cover;border-radius:4px}
+.cvtog{display:none}
+@media (max-width:860px){
+  .card.cvw{height:100%;padding:12px}
+  .cvgrid{grid-template-columns:1fr}
+  .cvtog{display:flex}
+  .cvw:not([data-view="prev"]) .cvprev{display:none}
+  .cvw[data-view="prev"] .cvform{display:none}
+}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 </style>
 
@@ -320,10 +352,12 @@ button,.tool,.ti,.th{touch-action:manipulation;-webkit-tap-highlight-color:trans
         <button type="button" class="stab" data-panel="tools" aria-selected="true">Outils</button>
         <button type="button" class="stab" data-panel="pages" aria-selected="false">Pages</button>
         <button type="button" class="stab" data-panel="comments" aria-selected="false">Commentaires</button>
+        <button type="button" class="stab" data-panel="cv" aria-selected="false">CV</button>
       </div>
       <div class="spanel" id="pTools"></div>
       <div class="spanel" id="pPages" hidden><div id="thumbs" style="display:flex;flex-direction:column;gap:6px"></div></div>
       <div class="spanel" id="pComments" hidden></div>
+      <div class="spanel" id="pCV" hidden></div>
     </aside>
     <section class="viewer" id="viewer"><div class="pages" id="pages"></div></section>
   </div>
@@ -2159,7 +2193,8 @@ let curPanel = 'tools';
 function showPanel(name){
   curPanel = name;
   document.querySelectorAll('.stab').forEach(b => b.setAttribute('aria-selected', String(b.dataset.panel === name)));
-  $('#pTools').hidden = name !== 'tools'; $('#pPages').hidden = name !== 'pages'; $('#pComments').hidden = name !== 'comments';
+  $('#pTools').hidden = name !== 'tools'; $('#pPages').hidden = name !== 'pages'; $('#pComments').hidden = name !== 'comments'; $('#pCV').hidden = name !== 'cv';
+  if (name === 'cv' && typeof renderCvPanel === 'function') renderCvPanel();
   if (name === 'comments') renderComments();
   if (name === 'pages') thumbs.querySelectorAll('.th').forEach(th => { th._rk = null; }), tio.disconnect(), thumbs.querySelectorAll('.th').forEach(th => tio.observe(th));
 }
@@ -2171,7 +2206,7 @@ const TOOL_GROUPS = [
     ['edit', 'Modifier le texte', 'Corriger une ligne existante'], ['addtext', 'Ajouter du texte'], ['image', 'Ajouter une image'],
     ['header', 'En-tête et pied de page', 'Numéros de page, date, nom du fichier'], ['watermark', 'Filigrane'], ['background', 'Arrière-plan'],
     ['link', 'Lien', 'Vers un site ou une page'], ['crop', 'Recadrer les pages'], ['props', 'Propriétés du document'] ]],
-  ['Créer et combiner', [ ['create', 'Créer un PDF', 'Page vierge, images, texte'], ['combine', 'Combiner des fichiers', 'Plusieurs PDF et images en un seul'] ]],
+  ['Créer et combiner', [ ['create', 'Créer un PDF', 'Page vierge, images, texte'], ['combine', 'Combiner des fichiers', 'Plusieurs PDF et images en un seul'], ['cv', 'Créer un CV', 'Modèles France, Australie, Nouvelle-Zélande'] ]],
   ['Organiser les pages', [ ['organize', 'Organiser les pages', 'Déplacer, pivoter, supprimer, dupliquer'], ['extract', 'Extraire des pages'], ['split', 'Diviser le PDF'],
     ['insertfile', 'Insérer depuis un fichier'], ['rotateall', 'Faire pivoter toutes les pages'] ]],
   ['Exporter un PDF', [ ['xword', 'Microsoft Word (.docx)'], ['xexcel', 'Microsoft Excel (.xlsx)'], ['xppt', 'Microsoft PowerPoint (.pptx)'], ['ximg', 'Images JPEG ou PNG'], ['xrtf', 'Texte enrichi (.rtf)'], ['xtxt', 'Texte brut (.txt)'] ]],
@@ -2378,6 +2413,373 @@ setTimeout(async () => {
     toast((st.icon === '✅' ? 'Claude a terminé : « ' : 'Claude a répondu : « ') + i.title.replace(/^\[[^\]]+\]\s*\([^)]*\)\s*/, '').slice(0, 50) + ' »', { label: 'Voir', fn: () => claudeWindow('list') });
   } catch(e){}
 }, 4000);
+/* ---------- CV : modèles à compléter (France, Australie, Nouvelle-Zélande) ---------- */
+/* Les usages de chaque pays : France (photo et âge facultatifs, 1 à 2 pages), Australie et Nouvelle-Zélande
+   (en anglais, sans photo ni âge, droit de travail et « referees » avec leurs coordonnées). */
+const CV_COUNTRIES = {
+  fr: { name: 'France', code: 'FR', lang: 'fr', style: 'moderne', pages: 2,
+    rules: ['En français, 1 page (2 au maximum avec de l’expérience).', 'Photo et âge facultatifs.', 'Expériences de la plus récente à la plus ancienne.', 'Indiquer le permis de conduire et les habilitations.'],
+    h: { contact: 'Coordonnées', profile: 'Profil', exp: 'Expérience professionnelle', edu: 'Formation', skills: 'Compétences', langs: 'Langues', certs: 'Permis et habilitations', interests: 'Centres d’intérêt', refs: 'Références', visa: '' },
+    ph: { city: 'Ville (département)', start: 'janv. 2020', end: 'aujourd’hui', certs: 'Permis B\nHabilitation électrique B1V\nCACES R489 cat. 3', langs: 'Français : langue maternelle\nAnglais : B1 (intermédiaire)', skills: 'Soudure MIG / TIG\nLecture de plans\nPose de garde-corps', interests: 'Course à pied\nImpression 3D' } },
+  au: { name: 'Australie', code: 'AU', lang: 'en', style: 'epure', pages: 3,
+    rules: ['En anglais (orthographe australienne : organise, colour, licence).', 'Pas de photo, ni âge, ni situation familiale.', '2 à 3 pages ; préciser le visa et le droit de travailler.', '2 à 3 « referees » avec leurs coordonnées (« available on request » est mal vu).', 'Chantier : indiquer la « White Card » (Construction Induction).'],
+    h: { contact: 'Contact', profile: 'Career Profile', exp: 'Employment History', edu: 'Education & Training', skills: 'Key Skills', langs: 'Languages', certs: 'Licences & Certifications', interests: 'Interests', refs: 'Referees', visa: 'Work rights' },
+    ph: { city: 'Suburb, State (ex. Fremantle, WA)', start: 'Jan 2020', end: 'Present', certs: 'Construction Induction (White Card)\nFull French driver licence (valid in Australia)', langs: 'French: native\nEnglish: intermediate (B1)', skills: 'MIG / TIG welding\nReading technical drawings\nBalustrade installation', interests: 'Running\n3D printing' },
+    visas: ['Working Holiday visa holder (subclass 417), full work rights', 'Work and Holiday visa holder (subclass 462), full work rights', 'Permanent resident, unrestricted work rights', 'Australian citizen'] },
+  nz: { name: 'Nouvelle-Zélande', code: 'NZ', lang: 'en', style: 'epure', pages: 2,
+    rules: ['En anglais, 2 pages maximum, présentation sobre.', 'Pas de photo, ni âge, ni situation familiale.', 'Préciser le visa (ex. Working Holiday Visa).', 'Au moins 2 « referees » : nom, poste, entreprise, téléphone, e-mail.'],
+    h: { contact: 'Contact', profile: 'Personal Profile', exp: 'Work Experience', edu: 'Qualifications & Education', skills: 'Skills', langs: 'Languages', certs: 'Licences & Certificates', interests: 'Interests', refs: 'Referees', visa: 'Visa status' },
+    ph: { city: 'City (ex. Christchurch)', start: 'Jan 2020', end: 'Present', certs: 'Site Safe Passport\nFull French driver licence (valid in NZ)', langs: 'French: native\nEnglish: intermediate (B1)', skills: 'MIG / TIG welding\nReading technical drawings\nBalustrade installation', interests: 'Running\n3D printing' },
+    visas: ['Working Holiday Visa, open work rights', 'Open work visa', 'NZ resident visa', 'NZ citizen'] }
+};
+const CV_STYLES = { moderne: 'Moderne (bandeau de couleur)', classique: 'Classique', epure: 'Épuré' };
+const CV_COLORS = ['#1f3a5f', '#0f5e66', '#b4552d', '#7a2433', '#3d4650', '#2f6b3a'];
+const CV_EXAMPLE = {
+  fr: { name: 'Julien Martin', title: 'Métallier-serrurier — soudeur', phone: '06 00 00 00 00', email: 'julien.martin@example.com', city: 'Nîmes (30)', web: '', age: '32 ans',
+    summary: 'Métallier-serrurier avec 8 ans d’expérience en fabrication et pose d’ouvrages acier et inox (garde-corps, escaliers, pergolas). Autonome sur chantier, rigoureux sur les finitions et la sécurité.',
+    exp: [ { title: 'Métallier-serrurier', company: 'Atelier Exemple', place: 'Nîmes', start: 'mars 2020', end: 'aujourd’hui', tasks: 'Fabrication de garde-corps, escaliers et pergolas sur mesure\nSoudure MIG/TIG acier, inox et acier Corten\nPose sur chantier et relation avec les clients' },
+           { title: 'Soudeur', company: 'Entreprise Modèle', place: 'Alès', start: 'sept. 2016', end: 'févr. 2020', tasks: 'Soudure de structures métalliques\nLecture de plans et contrôle des cotes' } ],
+    edu: [ { diploma: 'Bac pro Ouvrages du bâtiment : métallerie', school: 'Lycée professionnel', place: 'Nîmes', start: '2014', end: '2016', details: '' } ],
+    skills: 'Soudure MIG / TIG / à l’arc\nLecture de plans et métré\nPliage, cintrage, découpe plasma\nPose de garde-corps et escaliers', langs: 'Français : langue maternelle\nAnglais : B1 (intermédiaire)', certs: 'Permis B (véhicule personnel)\nHabilitation électrique B0\nCACES R486 (nacelles)', interests: 'Course à pied\nImpression 3D', refs: [] },
+  au: { name: 'Julien Martin', title: 'Metal Fabricator / Welder', phone: '+61 400 000 000', email: 'julien.martin@example.com', city: 'Perth, WA', web: '', visa: 'Working Holiday visa holder (subclass 417), full work rights',
+    summary: 'Qualified metal fabricator and welder from France with 8 years of experience in steel and stainless steel structures (balustrades, staircases, pergolas). Safety-focused, reliable and used to working independently on site.',
+    exp: [ { title: 'Metal Fabricator / Welder', company: 'Example Workshop', place: 'Nîmes, France', start: 'Mar 2020', end: 'Present', tasks: 'Fabricated custom balustrades, staircases and pergolas\nMIG/TIG welding of steel, stainless steel and Corten\nInstalled structures on site and liaised with clients' },
+           { title: 'Welder', company: 'Model Engineering', place: 'Alès, France', start: 'Sep 2016', end: 'Feb 2020', tasks: 'Welded structural steel frames\nRead technical drawings and checked dimensions' } ],
+    edu: [ { diploma: 'Vocational Baccalaureate in Metal Fabrication (Bac pro, Certificate III equivalent)', school: 'Vocational High School', place: 'Nîmes, France', start: '2014', end: '2016', details: '' } ],
+    skills: 'MIG / TIG / stick welding\nReading technical drawings\nCutting, bending and plasma cutting\nBalustrade and staircase installation\nWork health and safety (WHS)', langs: 'French: native\nEnglish: intermediate (B1)', certs: 'Construction Induction (White Card)\nFull French driver licence (valid in Australia)', interests: 'Running\n3D printing',
+    refs: [ { name: 'Paul Dupont', position: 'Workshop Manager', company: 'Example Workshop', phone: '+33 6 00 00 00 00', email: 'paul.dupont@example.com', relation: 'Direct supervisor (2020–present)' },
+            { name: 'Marie Laurent', position: 'Site Supervisor', company: 'Model Engineering', phone: '+33 6 00 00 00 01', email: 'marie.laurent@example.com', relation: 'Supervisor (2016–2020)' } ] },
+  nz: { name: 'Julien Martin', title: 'Metal Fabricator / Welder', phone: '+64 21 000 0000', email: 'julien.martin@example.com', city: 'Christchurch', web: '', visa: 'Working Holiday Visa, open work rights',
+    summary: 'Experienced metal fabricator and welder from France (8 years) specialising in balustrades, staircases and pergolas. Hard-working, safety-conscious and keen to contribute to a New Zealand team.',
+    exp: [ { title: 'Metal Fabricator / Welder', company: 'Example Workshop', place: 'Nîmes, France', start: 'Mar 2020', end: 'Present', tasks: 'Fabricated custom balustrades, staircases and pergolas\nMIG/TIG welding of steel, stainless steel and Corten\nInstalled structures on site and liaised with clients' },
+           { title: 'Welder', company: 'Model Engineering', place: 'Alès, France', start: 'Sep 2016', end: 'Feb 2020', tasks: 'Welded structural steel frames\nRead technical drawings and checked dimensions' } ],
+    edu: [ { diploma: 'Vocational Baccalaureate in Metal Fabrication (Bac pro)', school: 'Vocational High School', place: 'Nîmes, France', start: '2014', end: '2016', details: '' } ],
+    skills: 'MIG / TIG / stick welding\nReading technical drawings\nCutting, bending and plasma cutting\nBalustrade and staircase installation\nHealth and safety on site', langs: 'French: native\nEnglish: intermediate (B1)', certs: 'Site Safe Passport\nFull French driver licence (valid in NZ)', interests: 'Running\n3D printing',
+    refs: [ { name: 'Paul Dupont', position: 'Workshop Manager', company: 'Example Workshop', phone: '+33 6 00 00 00 00', email: 'paul.dupont@example.com', relation: 'Direct supervisor' },
+            { name: 'Marie Laurent', position: 'Site Supervisor', company: 'Model Engineering', phone: '+33 6 00 00 00 01', email: 'marie.laurent@example.com', relation: 'Supervisor' } ] }
+};
+const cvEmpty = c => ({ style: CV_COUNTRIES[c].style, color: CV_COLORS[0], name: '', title: '', phone: '', email: '', city: '', web: '', age: '', photo: '', visa: '', summary: '',
+  exp: [{}], edu: [{}], skills: '', langs: '', certs: '', interests: '', refs: c === 'fr' ? [] : [{}, {}] });
+function cvLoad(){ try { return JSON.parse(lsGet('glpdf.cv') || '{}'); } catch(e){ return {}; } }
+function cvStore(all){ try { lsSet('glpdf.cv', JSON.stringify(all)); } catch(e){ /* photo trop lourde : on garde le reste */ try { const c = JSON.parse(JSON.stringify(all)); Object.values(c).forEach(v => { if (v && v.photo) v.photo = ''; }); lsSet('glpdf.cv', JSON.stringify(c)); } catch(e2){} } }
+function cvData(c){
+  const all = cvLoad(); let d = all[c];
+  if (!d){ d = cvEmpty(c);
+    // les coordonnées déjà saisies pour un autre pays sont reprises
+    const o = all.fr || all.au || all.nz; if (o) ['name', 'phone', 'email', 'web'].forEach(k => { if (o[k]) d[k] = o[k]; }); }
+  return d;
+}
+const cvLines = s => String(s || '').split('\n').map(x => x.replace(/^\s*[-•*·]\s*/, '').trim()).filter(Boolean);
+const cvHas = o => o && Object.entries(o).some(([k, v]) => typeof v === 'string' && v.trim());
+/* un CV « commencé » : on ignore le modèle et la couleur choisis */
+const cvFilled = d => !!d && (['name', 'title', 'phone', 'email', 'summary', 'skills', 'langs', 'certs'].some(k => (d[k] || '').trim()) || (d.exp || []).some(cvHas) || (d.edu || []).some(cvHas));
+
+/* ----- mise en page du PDF ----- */
+async function cvFonts(doc, style){
+  const ids = { classique: ['PTSerif-700', 'PTSerif-400', 'PTSerif-400i', 'PTSerif-700'], moderne: ['Montserrat-700', 'Lato-400', 'Lato-400i', 'Lato-700'], epure: ['Inter-700', 'Inter-400', 'Inter-400', 'Inter-700'] }[style];
+  const SF = PDFLib.StandardFonts, std = style === 'classique' ? [SF.TimesRomanBold, SF.TimesRoman, SF.TimesRomanItalic, SF.TimesRomanBold] : [SF.HelveticaBold, SF.Helvetica, SF.HelveticaOblique, SF.HelveticaBold];
+  if (!FP.list){ try { await fpFetch(); } catch(e){} }
+  if (window.fontkit) doc.registerFontkit(window.fontkit);
+  const out = {}, cache = {};
+  const names = ['head', 'body', 'ital', 'bold'];
+  for (let i = 0; i < 4; i++){
+    let F = null;
+    if (window.fontkit && fpList().length){
+      const id = ids[i];
+      if (cache[id]) F = cache[id];
+      else { const pk = await fpLoad(id); if (pk){ try { F = { f: await doc.embedFont(pk.bytes, { subset: true }), fk: pk.fk }; cache[id] = F; } catch(e){ console.warn('CV police', id, e); } } }
+    }
+    if (!F) F = { f: await doc.embedFont(std[i]), fk: null };
+    out[names[i]] = F;
+  }
+  return out;
+}
+function cvClean(F, s){
+  s = String(s == null ? '' : s).replace(/[‘’ʼ]/g, '’').replace(/\t/g, ' ').replace(/\r/g, '');
+  let o = '';
+  for (const ch of s){
+    if (ch === '\n'){ o += ch; continue; }
+    const c = ch.codePointAt(0);
+    if (F.fk){ if (F.fk.hasGlyphForCodePoint(c)) o += ch; else o += ({ '’': "'", '–': '-', '—': '-', '•': '-', '…': '...', ' ': ' ', ' ': ' ' })[ch] || ''; }
+    else { try { F.f.encodeText(ch); o += ch; } catch(e){ o += ({ '’': "'", '–': '-', '—': '-', '…': '...' })[ch] || ''; } }
+  }
+  return o;
+}
+function cvWrap(F, size, text, width){
+  const W = t => F.f.widthOfTextAtSize(t, size), out = [];
+  for (const para of cvClean(F, text).split('\n')){
+    let cur = '';
+    for (const w of para.split(/ +/)){
+      const t = cur ? cur + ' ' + w : w;
+      if (W(t) <= width){ cur = t; continue; }
+      if (cur) out.push(cur);
+      if (W(w) <= width){ cur = w; continue; }
+      cur = ''; for (const ch of w){ if (cur && W(cur + ch) > width){ out.push(cur); cur = ch; } else cur += ch; }   // mot trop long : coupé
+    }
+    out.push(cur);
+  }
+  return out;
+}
+const cvRGB = h => { const n = parseInt(String(h || '#000000').slice(1), 16); return PDFLib.rgb((n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255); };
+const cvMix = (h, t) => { const n = parseInt(String(h).slice(1), 16), r = n >> 16 & 255, g = n >> 8 & 255, b = n & 255, m = v => Math.round(v + (255 - v) * t); return '#' + [m(r), m(g), m(b)].map(v => v.toString(16).padStart(2, '0')).join(''); };
+
+/* un flux de texte qui passe à la page suivante tout seul */
+class CvFlow {
+  constructor(ctx, x, w, top, bottom){ this.ctx = ctx; this.x = x; this.w = w; this.top = top; this.bottom = bottom; this.pi = 0; this.y = top(0); }
+  page(){ return this.ctx.page(this.pi); }
+  ensure(h){ if (this.y - h < this.bottom){ this.pi++; this.y = this.top(this.pi); return true; } return false; }
+  gap(h){ if (this.y < this.top(this.pi) - 0.5) this.y -= h; }
+  lines(str, F, size, color, o = {}){
+    const lh = size * (o.lh || 1.32), ind = o.indent || 0, lines = cvWrap(F, size, str, this.w - ind - (o.right || 0));
+    lines.forEach((ln, i) => {
+      this.ensure(lh); const base = this.y - (lh - size) / 2 - size * 0.8;
+      if (ln){
+        let x = this.x + ind;
+        if (o.align === 'center') x = this.x + (this.w - F.f.widthOfTextAtSize(ln, size)) / 2;
+        if (o.align === 'right') x = this.x + this.w - F.f.widthOfTextAtSize(ln, size);
+        this.page().drawText(ln, { x, y: base, size, font: F.f, color });
+        if (i === 0 && o.bullet) this.page().drawText(o.bullet, { x: this.x + ind - o.bulletW, y: base, size, font: F.f, color: o.bulletColor || color });
+      }
+      if (i === 0 && o.rightText){ const rt = cvClean(o.rightF || F, o.rightText); this.page().drawText(rt, { x: this.x + this.w - (o.rightF || F).f.widthOfTextAtSize(rt, o.rightSize || size), y: base, size: o.rightSize || size, font: (o.rightF || F).f, color: o.rightColor || color }); }
+      this.y -= lh;
+    });
+  }
+}
+
+async function cvBuild(c, d){
+  const C = CV_COUNTRIES[c], H = C.h, style = d.style || C.style, acc = d.color || CV_COLORS[0];
+  const doc = await PDFLib.PDFDocument.create();
+  doc.setTitle(('CV ' + (d.name || '').trim()).trim());
+  doc.setAuthor((d.name || '').trim() || 'G&L PDF'); doc.setCreator('G&L PDF'); doc.setProducer('G&L PDF'); doc.setLanguage(C.lang === 'fr' ? 'fr-FR' : c === 'au' ? 'en-AU' : 'en-NZ');
+  const F = await cvFonts(doc, style);
+  const PW = 595.28, PH = 841.89, ink = cvRGB('#1d2226'), soft = cvRGB('#5b6570'), A = cvRGB(acc), white = cvRGB('#ffffff');
+  const BAND = 186;
+  const pages = [];
+  const ctx = { page(i){ while (pages.length <= i){ const p = doc.addPage([PW, PH]);
+    if (style === 'moderne') p.drawRectangle({ x: 0, y: 0, width: BAND, height: PH, color: A });
+    pages.push(p); } return pages[i]; } };
+  ctx.page(0);
+  const photo = c === 'fr' && d.photo ? await (async () => { try { const b = Uint8Array.from(atob(d.photo.split(',')[1]), x => x.charCodeAt(0)); return /^data:image\/png/.test(d.photo) ? await doc.embedPng(b) : await doc.embedJpg(b); } catch(e){ return null; } })() : null;
+  const contact = [d.phone, d.email, d.city, d.web, c === 'fr' ? d.age : ''].map(x => (x || '').trim()).filter(Boolean);
+  const exps = (d.exp || []).filter(cvHas), edus = (d.edu || []).filter(cvHas), refs = c === 'fr' ? [] : (d.refs || []).filter(cvHas);
+  const skills = cvLines(d.skills), langs = cvLines(d.langs), certs = cvLines(d.certs), ints = cvLines(d.interests);
+  const bul = Fx => (Fx.fk ? Fx.fk.hasGlyphForCodePoint(0x2022) : true) ? '•' : '-';
+  const dates = e => [e.start, e.end].map(x => (x || '').trim()).filter(Boolean).join(' – ');
+
+  /* sections du corps : profil, expériences, formation, referees (+ listes en une colonne) */
+  const heading = (fl, txt, side) => {
+    const sz = side ? 10 : style === 'classique' ? 11.5 : 11;
+    fl.ensure(sz * 2 + 30); fl.gap(side ? 10 : 12);
+    fl.lines(side ? txt.toUpperCase() : style === 'epure' ? txt.toUpperCase() : txt, F.head, sz, side ? white : A, { lh: 1.25 });
+    if (!side){ const y = fl.y - 2; fl.page().drawLine({ start: { x: fl.x, y }, end: { x: fl.x + fl.w, y }, thickness: style === 'classique' ? 0.8 : 0.6, color: style === 'classique' ? A : cvRGB(cvMix(acc, 0.65)) }); fl.y -= 6; }
+    else fl.y -= 3;
+  };
+  const list = (fl, items, side) => { const Fb = F.body, sz = side ? 9 : 9.8, b = bul(Fb);
+    items.forEach(t => fl.lines(t, Fb, sz, side ? white : ink, { indent: 10, bullet: b, bulletW: 9, bulletColor: side ? white : A, lh: 1.3 })); };
+  const body = fl => {
+    if ((d.summary || '').trim()){ heading(fl, H.profile); fl.lines(d.summary.trim(), F.body, 10, ink, { lh: 1.4 }); }
+    if (exps.length){ heading(fl, H.exp);
+      exps.forEach((e, i) => { if (i) fl.gap(7); fl.ensure(40);
+        fl.lines(e.title || '', F.bold, 10.5, ink, { right: 110, rightText: dates(e), rightF: F.body, rightSize: 9, rightColor: soft });
+        const sub = [e.company, e.place].map(x => (x || '').trim()).filter(Boolean).join(' — ');
+        if (sub) fl.lines(sub, F.ital, 9.6, A, { lh: 1.35 });
+        const tl = cvLines(e.tasks); if (tl.length){ fl.y -= 2; list(fl, tl); } }); }
+    if (edus.length){ heading(fl, H.edu);
+      edus.forEach((e, i) => { if (i) fl.gap(6); fl.ensure(30);
+        fl.lines(e.diploma || '', F.bold, 10.2, ink, { right: 110, rightText: dates(e), rightF: F.body, rightSize: 9, rightColor: soft });
+        const sub = [e.school, e.place].map(x => (x || '').trim()).filter(Boolean).join(' — ');
+        if (sub) fl.lines(sub, F.ital, 9.6, A);
+        if ((e.details || '').trim()) fl.lines(e.details.trim(), F.body, 9.6, ink); }); }
+  };
+  const refsBlock = fl => {
+    if (!refs.length) return;
+    heading(fl, H.refs);
+    const colW = (fl.w - 16) / 2;
+    for (let i = 0; i < refs.length; i += 2){
+      const pair = refs.slice(i, i + 2).map(r => [ [r.name, F.bold, 10, ink], [[r.position, r.company].map(x => (x || '').trim()).filter(Boolean).join(', '), F.body, 9.4, ink], [r.relation, F.ital, 9.2, soft], [r.phone, F.body, 9.4, ink], [r.email, F.body, 9.4, A] ].filter(x => (x[0] || '').trim()));
+      const h = Math.max(...pair.map(p => p.length)) * 13.5 + 6;
+      fl.ensure(h); fl.gap(4);
+      const y0 = fl.y;
+      pair.forEach((p, k) => { const sub = new CvFlow(ctx, fl.x + k * (colW + 16), colW, () => y0, fl.bottom); sub.pi = fl.pi; sub.y = y0; p.forEach(([t, f, s, col]) => sub.lines(t.trim(), f, s, col, { lh: 1.4 })); });
+      fl.y = y0 - h;
+    }
+  };
+  const header = (fl, center, maxW) => {
+    const w0 = fl.w; if (maxW) fl.w = maxW;
+    fl.lines(d.name || (C.lang === 'fr' ? 'Prénom Nom' : 'First Last'), F.head, style === 'moderne' ? 25 : 24, style === 'moderne' ? ink : style === 'classique' ? ink : A, { align: center ? 'center' : 'left', lh: 1.15 });
+    if ((d.title || '').trim()) fl.lines(d.title.trim(), style === 'classique' ? F.ital : F.bold, 12.5, style === 'classique' ? A : style === 'moderne' ? A : ink, { align: center ? 'center' : 'left', lh: 1.4 });
+    fl.w = w0;
+  };
+
+  if (style === 'moderne'){
+    // bandeau : photo, coordonnées, compétences, langues, permis, intérêts
+    const side = new CvFlow(ctx, 18, BAND - 36, i => PH - 40, 36);
+    if (photo){ const pw = 112, ph = pw * 1.25, x = (BAND - pw) / 2, y = PH - 36 - ph;
+      ctx.page(0).drawRectangle({ x: x - 3, y: y - 3, width: pw + 6, height: ph + 6, color: white });
+      ctx.page(0).drawImage(photo, { x, y, width: pw, height: ph }); side.y = y - 16; }
+    const sideList = (title, items) => { if (!items.length) return; heading(side, title, true); list(side, items, true); side.gap(4); };
+    if (contact.length){ heading(side, H.contact, true); contact.forEach(t => side.lines(t, F.body, 9, white, { lh: 1.45 })); side.gap(4); }
+    if (c !== 'fr' && (d.visa || '').trim()){ heading(side, H.visa, true); side.lines(d.visa.trim(), F.bold, 9, white, { lh: 1.4 }); side.gap(4); }
+    sideList(H.skills, skills); sideList(H.certs, certs); sideList(H.langs, langs); sideList(H.interests, ints);
+    const main = new CvFlow(ctx, BAND + 26, PW - BAND - 26 - 34, i => PH - 44, 40);
+    header(main); main.y -= 4;
+    body(main); refsBlock(main);
+  } else {
+    const M = style === 'classique' ? 50 : 46;
+    const fl = new CvFlow(ctx, M, PW - 2 * M, i => PH - 44, 40);
+    let pW = 0;
+    if (photo){ const pw = 78, ph = pw * 1.25; pW = pw + 16; ctx.page(0).drawImage(photo, { x: PW - M - pw, y: PH - 40 - ph, width: pw, height: ph }); }
+    const center = style === 'classique' && !photo;
+    header(fl, center, pW ? fl.w - pW : 0);
+    const info = contact.join('   ·   ');
+    if (info){ const w0 = fl.w; if (pW) fl.w -= pW; fl.lines(info, F.body, 9.4, soft, { align: center ? 'center' : 'left', lh: 1.45 }); fl.w = w0; }
+    if (c !== 'fr' && (d.visa || '').trim()){ const w0 = fl.w; if (pW) fl.w -= pW; fl.lines(H.visa + (C.lang === 'fr' ? ' : ' : ': ') + d.visa.trim(), F.bold, 9.6, ink, { align: center ? 'center' : 'left', lh: 1.45 }); fl.w = w0; }
+    if (photo) fl.y = Math.min(fl.y, PH - 40 - 78 * 1.25 - 4);
+    if (style === 'classique'){ fl.y -= 6; fl.page().drawLine({ start: { x: M, y: fl.y }, end: { x: PW - M, y: fl.y }, thickness: 1.2, color: A }); fl.y -= 2; }
+    body(fl);
+    const inline = (title, items) => { if (!items.length) return; heading(fl, title); list(fl, items); };
+    inline(H.skills, skills); inline(H.certs, certs); inline(H.langs, langs); inline(H.interests, ints);
+    refsBlock(fl);
+  }
+  // numéro de page discret si plusieurs pages
+  if (pages.length > 1) pages.forEach((p, i) => { const t = cvClean(F.body, (d.name || '').trim() + '  —  ' + (i + 1) + ' / ' + pages.length); p.drawText(t, { x: PW - 34 - F.body.f.widthOfTextAtSize(t, 8), y: 20, size: 8, font: F.body.f, color: soft }); });
+  return { bytes: await doc.save(), pages: pages.length };
+}
+
+/* ----- onglet « CV » de la barre latérale ----- */
+function renderCvPanel(){
+  const el = $('#pCV'); if (!el) return;
+  const all = cvLoad();
+  el.innerHTML = '<p class="hint" style="margin:0 0 4px">Modèles de CV à compléter, selon les usages de chaque pays. Le CV s’ouvre ensuite ici comme un PDF : vous pouvez le modifier, le signer, l’enregistrer ou l’exporter en Word.</p>' +
+    Object.entries(CV_COUNTRIES).map(([k, C]) => '<div class="cvc"><div class="cvh"><span class="cvb">' + C.code + '</span><b>' + C.name + '</b><span class="hint">' + (C.lang === 'fr' ? 'en français' : 'en anglais') + '</span></div>' +
+      '<ul>' + C.rules.map(r => '<li>' + r + '</li>').join('') + '</ul>' +
+      '<button type="button" class="btn pri" data-cv="' + k + '">' + (all[k] && cvFilled(all[k]) ? 'Reprendre mon CV ' : 'Compléter le CV ') + C.name + '</button></div>').join('');
+  el.querySelectorAll('[data-cv]').forEach(b => b.onclick = () => cvEditor(b.dataset.cv));
+}
+ACT.cv = () => { document.body.classList.add('show-side'); showPanel('cv'); };
+
+/* ----- formulaire avec aperçu en direct ----- */
+function cvEditor(c){
+  const C = CV_COUNTRIES[c], en = C.lang === 'en';
+  let d = cvData(c);
+  closeModal();
+  modal = document.createElement('div'); modal.className = 'modal';
+  modal.innerHTML = '<div class="card wide cvw" role="dialog" aria-modal="true" aria-label="CV ' + C.name + '">' +
+    '<div class="row" style="justify-content:space-between"><h2 style="margin:0">CV ' + C.name + (en ? ' <span class="hint">(à rédiger en anglais)</span>' : '') + '</h2>' +
+    '<div class="tabs cvtog"><button type="button" data-v="form" aria-pressed="true">Formulaire</button><button type="button" data-v="prev" aria-pressed="false">Aperçu</button></div></div>' +
+    '<div class="cvgrid"><div class="cvform"></div><div class="cvprev"><div class="cvpinfo hint"></div><div class="cvpages"></div></div></div>' +
+    '<div class="row" style="justify-content:space-between"><div class="row"><button type="button" class="btn" data-ex>Remplir avec un exemple</button><button type="button" class="btn" data-clear>Tout effacer</button></div>' +
+    '<div class="row"><button type="button" class="btn" data-x>Fermer</button><button type="button" class="btn pri" data-go>Créer le PDF</button></div></div></div>';
+  document.body.appendChild(modal);
+  const m = modal, form = m.querySelector('.cvform'), pv = m.querySelector('.cvpages'), pinfo = m.querySelector('.cvpinfo');
+  const escH = s => String(s == null ? '' : s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  let timer = 0, gen = 0;
+  const save = () => { const all = cvLoad(); all[c] = d; cvStore(all); };
+  const field = (label, key, o = {}) => '<label class="cvf' + (o.full ? ' full' : '') + '"><span>' + label + '</span>' +
+    (o.area ? '<textarea data-k="' + key + '" rows="' + (o.rows || 3) + '" placeholder="' + escH(o.ph || '') + '">' + escH(d[key]) + '</textarea>'
+      : '<input type="text" data-k="' + key + '" value="' + escH(d[key]) + '" placeholder="' + escH(o.ph || '') + '"' + (o.list ? ' list="' + o.list + '"' : '') + '>') + (o.help ? '<small>' + o.help + '</small>' : '') + '</label>';
+  const group = (key, title, fields, addLabel) => '<fieldset class="cvset"><legend>' + title + '</legend>' + (d[key] || []).map((it, i) =>
+      '<div class="cvitem" data-g="' + key + '" data-i="' + i + '"><div class="cvitem-h"><b>' + title.replace(/s$/, '') + ' ' + (i + 1) + '</b><span>' +
+      (i ? '<button type="button" class="btn sm" data-up title="Monter">▲</button>' : '') + '<button type="button" class="btn sm" data-del title="Supprimer">✕</button></span></div><div class="cvrow">' +
+      fields.map(([lab, k, o]) => '<label class="cvf' + (o && o.full ? ' full' : '') + '"><span>' + lab + '</span>' + (o && o.area ? '<textarea data-gk="' + k + '" rows="' + (o.rows || 3) + '" placeholder="' + escH(o.ph || '') + '">' + escH(it[k]) + '</textarea>' : '<input type="text" data-gk="' + k + '" value="' + escH(it[k]) + '" placeholder="' + escH(o && o.ph || '') + '">') + '</label>').join('') +
+      '</div></div>').join('') + '<button type="button" class="btn" data-add="' + key + '">+ ' + addLabel + '</button></fieldset>';
+  const draw = () => {
+    const P = C.ph;
+    form.innerHTML =
+      '<div class="cvtips"><b>Usages ' + (c === 'fr' ? 'en France' : c === 'au' ? 'en Australie' : 'en Nouvelle-Zélande') + '</b><ul>' + C.rules.map(r => '<li>' + r + '</li>').join('') + '</ul></div>' +
+      '<fieldset class="cvset"><legend>Présentation</legend><div class="cvrow"><label class="cvf"><span>Modèle</span><select data-k="style">' + Object.entries(CV_STYLES).map(([k, v]) => '<option value="' + k + '"' + (d.style === k ? ' selected' : '') + '>' + v + '</option>').join('') + '</select>' +
+        (c === 'nz' ? '<small>En Nouvelle-Zélande, une présentation sobre est conseillée.</small>' : '') + '</label>' +
+        '<div class="cvf"><span>Couleur</span><div class="cvcols">' + CV_COLORS.map(col => '<button type="button" class="cvcol" data-col="' + col + '" style="background:' + col + '" aria-pressed="' + (d.color === col) + '" title="' + col + '"></button>').join('') + '</div></div></div></fieldset>' +
+      '<fieldset class="cvset"><legend>' + (en ? 'Identité et contact (en anglais)' : 'Identité et coordonnées') + '</legend><div class="cvrow">' +
+        field('Prénom et nom', 'name', { ph: 'Julien Martin' }) + field(en ? 'Métier visé (job title)' : 'Métier visé', 'title', { ph: en ? 'Metal Fabricator / Welder' : 'Métallier-serrurier' }) +
+        field('Téléphone', 'phone', { ph: c === 'fr' ? '06 00 00 00 00' : c === 'au' ? '+61 4xx xxx xxx' : '+64 2x xxx xxxx' }) + field('E-mail', 'email', { ph: 'prenom.nom@example.com' }) +
+        field(c === 'fr' ? 'Ville' : 'Ville', 'city', { ph: P.city }) + field('Site ou LinkedIn (facultatif)', 'web', { ph: 'linkedin.com/in/…' }) +
+        (c === 'fr' ? field('Âge (facultatif)', 'age', { ph: '32 ans', help: 'Facultatif en France : laissez vide si vous préférez.' }) +
+          '<div class="cvf"><span>Photo (facultatif)</span><div class="row">' + (d.photo ? '<img src="' + d.photo + '" alt="" class="cvph">' : '') + '<button type="button" class="btn" data-photo>' + (d.photo ? 'Changer' : 'Ajouter une photo') + '</button>' + (d.photo ? '<button type="button" class="btn" data-nophoto>Retirer</button>' : '') + '</div></div>'
+          : field(C.h.visa + ' (visa)', 'visa', { list: 'cvvisas', ph: C.visas[0], full: true, help: 'Très important pour les employeurs : choisissez dans la liste ou écrivez votre situation.' }) + '<datalist id="cvvisas">' + C.visas.map(v => '<option value="' + escH(v) + '">').join('') + '</datalist>') +
+      '</div></fieldset>' +
+      '<fieldset class="cvset"><legend>' + C.h.profile + '</legend>' + field(en ? '3 à 5 phrases qui vous résument (en anglais)' : '3 à 5 phrases qui vous résument', 'summary', { area: true, rows: 4, full: true, ph: en ? 'Experienced metal fabricator with 8 years…' : 'Métallier avec 8 ans d’expérience…' }) + '</fieldset>' +
+      group('exp', en ? 'Expériences (' + C.h.exp + ')' : 'Expériences', [['Poste', 'title', { ph: en ? 'Welder' : 'Soudeur' }], ['Entreprise', 'company'], ['Lieu', 'place', { ph: en ? 'Nîmes, France' : 'Nîmes' }], ['Début', 'start', { ph: P.start }], ['Fin', 'end', { ph: P.end }], ['Missions et réussites (une par ligne)', 'tasks', { area: true, full: true, rows: 3, ph: en ? 'Fabricated custom balustrades\nMIG/TIG welding' : 'Fabrication de garde-corps sur mesure\nSoudure MIG/TIG' }]], 'Ajouter une expérience') +
+      group('edu', en ? 'Formations (' + C.h.edu + ')' : 'Formations', [['Diplôme', 'diploma', { ph: en ? 'Vocational Baccalaureate in Metal Fabrication' : 'Bac pro métallerie' }], ['Établissement', 'school'], ['Lieu', 'place'], ['Début', 'start', { ph: '2014' }], ['Fin', 'end', { ph: '2016' }], ['Détails (facultatif)', 'details', { full: true }]], 'Ajouter une formation') +
+      '<fieldset class="cvset"><legend>Compétences et plus</legend><div class="cvrow">' +
+        field(C.h.skills + ' (une par ligne)', 'skills', { area: true, rows: 4, ph: P.skills }) + field(C.h.langs + ' (une par ligne)', 'langs', { area: true, rows: 4, ph: P.langs }) +
+        field(C.h.certs + ' (un par ligne)', 'certs', { area: true, rows: 3, ph: P.certs }) + field(C.h.interests + ' (facultatif)', 'interests', { area: true, rows: 3, ph: P.interests }) + '</div></fieldset>' +
+      (c === 'fr' ? '' : group('refs', 'Referees', [['Nom', 'name'], ['Poste', 'position', { ph: 'Workshop Manager' }], ['Entreprise', 'company'], ['Lien avec vous', 'relation', { ph: 'Direct supervisor' }], ['Téléphone', 'phone', { ph: '+33 6 …' }], ['E-mail', 'email']], 'Ajouter un referee') +
+        '<p class="hint" style="margin:-4px 0 0">' + (c === 'au' ? 'En Australie, mettez 2 à 3 referees avec leurs coordonnées complètes : de préférence des responsables qui vous ont encadré.' : 'En Nouvelle-Zélande, au moins 2 referees, dont votre responsable actuel ou le plus récent. Prévenez-les : ils seront appelés.') + '</p>');
+    bind();
+  };
+  const preview = () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const my = ++gen;
+      try {
+        const r = await cvBuild(c, d); if (my !== gen || modal !== m) return;
+        const pdf = await pdfjs.getDocument({ data: r.bytes.slice(), isEvalSupported: false }).promise;
+        const wrapW = Math.max(220, pv.clientWidth - 4), frag = document.createDocumentFragment();
+        for (let i = 1; i <= pdf.numPages; i++){
+          const pg = await pdf.getPage(i), vp1 = pg.getViewport({ scale: 1 }), sc = wrapW / vp1.width * (window.devicePixelRatio || 1);
+          const vp = pg.getViewport({ scale: sc }), cv = document.createElement('canvas'); cv.width = Math.floor(vp.width); cv.height = Math.floor(vp.height); cv.style.width = wrapW + 'px';
+          await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise; frag.appendChild(cv);
+        }
+        if (my !== gen || modal !== m) return;
+        pv.innerHTML = ''; pv.appendChild(frag);
+        pinfo.textContent = r.pages + ' page' + (r.pages > 1 ? 's' : '') + (r.pages > C.pages ? ' — un peu long : ' + C.pages + ' page' + (C.pages > 1 ? 's' : '') + ' maximum conseillée' + (C.pages > 1 ? 's' : '') + ' pour ce pays.' : '');
+        pdf.destroy();
+      } catch(e){ console.warn('aperçu CV', e); pinfo.textContent = 'Aperçu indisponible : ' + (e && e.message || e); }
+    }, 450);
+  };
+  const changed = () => { save(); preview(); };
+  function bind(){
+    form.querySelectorAll('[data-k]').forEach(inp => inp.addEventListener(inp.tagName === 'SELECT' ? 'change' : 'input', () => { d[inp.dataset.k] = inp.value; changed(); }));
+    form.querySelectorAll('.cvitem').forEach(box => { const g = box.dataset.g, i = +box.dataset.i;
+      box.querySelectorAll('[data-gk]').forEach(inp => inp.addEventListener('input', () => { d[g][i][inp.dataset.gk] = inp.value; changed(); }));
+      const del = box.querySelector('[data-del]'); if (del) del.onclick = () => { d[g].splice(i, 1); draw(); changed(); };
+      const up = box.querySelector('[data-up]'); if (up) up.onclick = () => { const a = d[g]; [a[i - 1], a[i]] = [a[i], a[i - 1]]; draw(); changed(); }; });
+    form.querySelectorAll('[data-add]').forEach(b => b.onclick = () => { const g = b.dataset.add; (d[g] = d[g] || []).push({}); draw(); changed();
+      const last = form.querySelectorAll('.cvitem[data-g="' + g + '"]'); const box = last[last.length - 1]; if (box){ box.scrollIntoView({ block: 'center' }); const f = box.querySelector('input'); if (f) f.focus(); } });
+    form.querySelectorAll('[data-col]').forEach(b => b.onclick = () => { d.color = b.dataset.col; form.querySelectorAll('[data-col]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); changed(); });
+    const ph = form.querySelector('[data-photo]'); if (ph) ph.onclick = () => cvPickPhoto(url => { d.photo = url; draw(); changed(); });
+    const np = form.querySelector('[data-nophoto]'); if (np) np.onclick = () => { d.photo = ''; draw(); changed(); };
+  }
+  m.querySelector('[data-x]').onclick = () => closeModal();
+  m.querySelectorAll('.cvtog [data-v]').forEach(b => b.onclick = () => { m.querySelector('.cvw').dataset.view = b.dataset.v; m.querySelectorAll('.cvtog [data-v]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); if (b.dataset.v === 'prev') preview(); });
+  m.querySelector('[data-ex]').onclick = async () => {
+    const keep = { style: d.style, color: d.color };
+    // la question s'affiche à la place de cette fenêtre : on la rouvre ensuite
+    if (cvFilled(d) && !(await ask('Remplir avec un exemple ?', 'Ce que vous avez déjà saisi pour ce pays sera remplacé par un exemple (métallier-soudeur) que vous pourrez ensuite adapter.', [{ label: 'Annuler', value: false }, { label: 'Remplacer par l’exemple', pri: true, value: true }]))){ cvEditor(c); return; }
+    d = Object.assign(cvEmpty(c), JSON.parse(JSON.stringify(CV_EXAMPLE[c])), keep); save();
+    if (modal === m){ draw(); changed(); } else cvEditor(c);
+  };
+  m.querySelector('[data-clear]').onclick = async () => {
+    if (!(await ask('Tout effacer ?', 'Tout ce qui est saisi pour le CV ' + C.name + ' sera effacé.', [{ label: 'Annuler', value: false }, { label: 'Tout effacer', pri: true, value: true }]))){ cvEditor(c); return; }
+    d = cvEmpty(c); save(); cvEditor(c);
+  };
+  m.querySelector('[data-go]').onclick = async () => {
+    if (!(d.name || '').trim()){ toast('Indiquez au moins votre prénom et votre nom.'); const f = form.querySelector('[data-k="name"]'); if (f) f.focus(); return; }
+    busy(true, 'Création du CV…');
+    let r; try { r = await cvBuild(c, d); } catch(e){ console.error(e); busy(false); toast('Le CV n’a pas pu être créé : ' + (e && e.message || e)); return; }
+    busy(false); save();
+    const fname = ('CV ' + d.name.trim() + ' - ' + C.name).replace(/[\\/:*?"<>|]+/g, '') + '.pdf';
+    closeModal();
+    if (await loadPdf(r.bytes, fname, false, null)){ setDirty(true); renderCvPanel(); toast('CV créé (' + r.pages + ' page' + (r.pages > 1 ? 's' : '') + '). Enregistrez-le, signez-le ou exportez-le en Word depuis les outils.'); }
+  };
+  draw(); preview();
+}
+/* photo : recadrée au format portrait 4:5 et compressée (pour rester légère) */
+function cvPickPhoto(done){
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
+  inp.onchange = () => { const f = inp.files && inp.files[0]; if (!f) return;
+    const url = URL.createObjectURL(f), img = new Image();
+    img.onload = () => { const W = 480, H = 600, r = Math.max(W / img.width, H / img.height), c = document.createElement('canvas'); c.width = W; c.height = H;
+      const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, W, H); g.drawImage(img, (W - img.width * r) / 2, (H - img.height * r) / 2, img.width * r, img.height * r);
+      URL.revokeObjectURL(url); done(c.toDataURL('image/jpeg', 0.85)); };
+    img.onerror = () => { URL.revokeObjectURL(url); toast('Cette image ne peut pas être lue.'); };
+    img.src = url; };
+  inp.click();
+}
+renderCvPanel();
+window.__glCvBuild = (c, d) => cvBuild(c, d);
+
 
 
 $('#zPage').onclick = () => {

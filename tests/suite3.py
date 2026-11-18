@@ -99,8 +99,37 @@ with sync_playwright() as pw:
     im=Image.open(OUT+'/cache.png').convert('L')
     zone=[im.getpixel((x,y)) for x in range(60,200) for y in range(68,86)]
     ok('enregistré : texte de la zone déplacée visible (pas recouvert)', 'NOUVELLE ADRESSE' in txt and sum(1 for v in zone if v<100)>40, sum(1 for v in zone if v<100))
+    # ---- onglet CV : modèles France, Australie, Nouvelle-Zélande
+    import base64 as _b64
+    pg.evaluate("localStorage.removeItem('glpdf.cv')")
+    pg.click('.stab[data-panel=cv]'); pg.wait_for_timeout(300)
+    ok('CV : onglet avec les 3 pays', pg.locator('#pCV [data-cv]').count()==3)
+    attendus={'fr':['Expérience professionnelle','Formation','Permis et habilitations'],'au':['EMPLOYMENT HISTORY','REFEREES','White Card','Working Holiday visa holder'],'nz':['WORK EXPERIENCE','REFEREES','Working Holiday Visa, open work rights']}
+    for c in ['fr','au','nz']:
+        pg.click('[data-cv=%s]'%c); pg.wait_for_timeout(500); pg.click('[data-ex]'); pg.wait_for_timeout(400)
+        # coordonnées reprises du CV d'un autre pays : l'exemple demande confirmation
+        if pg.locator('.modal .btn.pri:has-text("Remplacer")').count(): pg.click('.modal .btn.pri:has-text("Remplacer")')
+        pg.wait_for_timeout(2500)
+        ok('CV %s : aperçu affiché'%c, pg.locator('.cvpages canvas').count()>=1 and 'page' in pg.inner_text('.cvpinfo'), pg.inner_text('.cvpinfo'))
+        ok('CV %s : photo proposée seulement en France'%c, (pg.locator('[data-photo]').count()==1)==(c=='fr'))
+        for st in ['moderne','classique','epure']:
+            r=pg.evaluate("""async ([c,st])=>{const d=JSON.parse(localStorage.getItem('glpdf.cv'))[c]; d.style=st; const r=await window.__glCvBuild(c,d); let s=''; const u=r.bytes; for(let i=0;i<u.length;i+=8192) s+=String.fromCharCode.apply(null,u.subarray(i,i+8192)); return {b:btoa(s),p:r.pages};}""",[c,st])
+            f=OUT+'/cv-%s-%s.pdf'%(c,st); open(f,'wb').write(_b64.b64decode(r['b']))
+            t=subprocess.run(['pdftotext',f,'-'],capture_output=True,text=True).stdout
+            plat=t.replace(' ','').replace(chr(10),'').lower()
+            manque=[x for x in attendus[c]+['Julien Martin'] if x.replace(' ','').lower() not in plat]
+            ok('CV %s %s : contenu complet, %d page(s)'%(c,st,r['p']), not manque and r['p']<=3, manque)
+        pg.click('[data-x]'); pg.wait_for_timeout(300)
+    pg.click('[data-cv=nz]'); pg.wait_for_timeout(600); pg.click('[data-go]'); pg.wait_for_timeout(2500)
+    ok('CV : « Créer le PDF » ouvre le CV dans l’éditeur', 'CV Julien Martin - Nouvelle-Zélande.pdf' in pg.inner_text('#fname') and pg.evaluate("window.__glState().pages.length")>=1, pg.inner_text('#fname'))
+    pg.evaluate("localStorage.removeItem('glpdf.cv')")
+    pg.click('.stab[data-panel=tools]')
     # ---- modifier une ligne ne doit laisser aucun bandeau gris (fond blanc = blanc pur ; fond coloré conservé)
-    pg.set_input_files('#fOpen',S+'/fond.pdf'); pg.wait_for_timeout(2000)
+    pg.set_input_files('#fOpen',S+'/fond.pdf'); pg.wait_for_timeout(800)
+    # le CV qui vient d'être créé n'est pas encore enregistré : le logiciel le demande
+    ok('CV : protégé tant qu’il n’est pas enregistré', pg.locator('.modal button:has-text("Ne pas enregistrer")').count()==1)
+    if pg.locator('.modal button:has-text("Ne pas enregistrer")').count(): pg.click('.modal button:has-text("Ne pas enregistrer")')
+    pg.wait_for_timeout(1500)
     pg.click('[data-t=edit]'); pg.wait_for_timeout(300)
     boxes=sorted([pg.locator('.ti').nth(k).bounding_box() for k in range(pg.locator('.ti').count())], key=lambda r: r['y'])
     for bb in boxes:

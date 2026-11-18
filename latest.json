@@ -1,8 +1,8 @@
 {
- "version": "1.6.4",
+ "version": "1.7.0",
  "file": "editeur.html",
- "sha256": "69e0350146a12c5ec791fe259c7d7a57baa0607c12bc8ebc29607656712f0972",
- "notes": "Une zone de texte déplacée n’est plus coupée par les caches des lignes modifiées",
+ "sha256": "3c5451ae94227ef0086d03cacfb91740aa369a5642dae3559579b681aa076324",
+ "notes": "Nouvel onglet CV : modèles à compléter pour la France, l’Australie et la Nouvelle-Zélande",
  "historique": [
   {
    "version": "1.5.4",
@@ -39,6 +39,12 @@
    "contenu": "1.6.4",
    "date": "2026-11-15",
    "notes": "Une zone de texte déplacée n’est plus coupée par les caches des lignes modifiées"
+  },
+  {
+   "version": "1.7.0",
+   "contenu": "1.7.0",
+   "date": "2026-11-18",
+   "notes": "Nouvel onglet CV : modèles à compléter pour la France, l’Australie et la Nouvelle-Zélande"
   }
  ]
 }
