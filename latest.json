@@ -1,8 +1,8 @@
 {
- "version": "1.7.0",
+ "version": "1.8.0",
  "file": "editeur.html",
- "sha256": "3c5451ae94227ef0086d03cacfb91740aa369a5642dae3559579b681aa076324",
- "notes": "Nouvel onglet CV : modèles à compléter pour la France, l’Australie et la Nouvelle-Zélande",
+ "sha256": "794f909373c628c318be94e72b6e1a2199e1554d8b4fdebe960173ba814d1e1a",
+ "notes": "CV : lignes toutes prêtes, traduction automatique en anglais modifiable, 8 modèles, onglet photo, plusieurs CV, vérification",
  "historique": [
   {
    "version": "1.5.4",
@@ -45,6 +45,12 @@
    "contenu": "1.7.0",
    "date": "2026-11-18",
    "notes": "Nouvel onglet CV : modèles à compléter pour la France, l’Australie et la Nouvelle-Zélande"
+  },
+  {
+   "version": "1.8.0",
+   "contenu": "1.8.0",
+   "date": "2026-11-19",
+   "notes": "CV : lignes toutes prêtes, traduction automatique en anglais modifiable, 8 modèles, onglet photo, plusieurs CV, vérification"
   }
  ]
 }

@@ -99,30 +99,101 @@ with sync_playwright() as pw:
     im=Image.open(OUT+'/cache.png').convert('L')
     zone=[im.getpixel((x,y)) for x in range(60,200) for y in range(68,86)]
     ok('enregistré : texte de la zone déplacée visible (pas recouvert)', 'NOUVELLE ADRESSE' in txt and sum(1 for v in zone if v<100)>40, sum(1 for v in zone if v<100))
-    # ---- onglet CV : modèles France, Australie, Nouvelle-Zélande
-    import base64 as _b64
-    pg.evaluate("localStorage.removeItem('glpdf.cv')")
+    # ---- onglet CV : éditeur complet (lignes prêtes, traduction, modèles, photo)
+    import base64 as _b64, json as _json
+    pg.route('**/api.mymemory.translated.net/**', lambda r: r.fulfill(status=200, content_type='application/json', body='{"responseStatus":200,"responseData":{"translatedText":"I am a very motivated craftsman &amp; reliable."}}'))
+    # reprise d'un CV de l'ancienne version
+    pg.evaluate("""()=>{['glpdf.cv2','glpdf.cv2.migrated','glpdf.cv.mem','glpdf.cv.tab'].forEach(k=>localStorage.removeItem(k)); localStorage.setItem('glpdf.cv.web','yes');
+      localStorage.setItem('glpdf.cv', JSON.stringify({fr:{name:'Ancien Nom',title:'Maçon',summary:'Ancien profil',exp:[{title:'Maçon',company:'SARL Test',start:'2019',end:'aujourd’hui',tasks:'Montage de murs\\nCoffrage'}],skills:'Coffrage\\nEnduit',langs:'Français (langue maternelle)'}}));}""")
     pg.click('.stab[data-panel=cv]'); pg.wait_for_timeout(300)
-    ok('CV : onglet avec les 3 pays', pg.locator('#pCV [data-cv]').count()==3)
-    attendus={'fr':['Expérience professionnelle','Formation','Permis et habilitations'],'au':['EMPLOYMENT HISTORY','REFEREES','White Card','Working Holiday visa holder'],'nz':['WORK EXPERIENCE','REFEREES','Working Holiday Visa, open work rights']}
-    for c in ['fr','au','nz']:
-        pg.click('[data-cv=%s]'%c); pg.wait_for_timeout(500); pg.click('[data-ex]'); pg.wait_for_timeout(400)
-        # coordonnées reprises du CV d'un autre pays : l'exemple demande confirmation
-        if pg.locator('.modal .btn.pri:has-text("Remplacer")').count(): pg.click('.modal .btn.pri:has-text("Remplacer")')
-        pg.wait_for_timeout(2500)
-        ok('CV %s : aperçu affiché'%c, pg.locator('.cvpages canvas').count()>=1 and 'page' in pg.inner_text('.cvpinfo'), pg.inner_text('.cvpinfo'))
-        ok('CV %s : photo proposée seulement en France'%c, (pg.locator('[data-photo]').count()==1)==(c=='fr'))
-        for st in ['moderne','classique','epure']:
-            r=pg.evaluate("""async ([c,st])=>{const d=JSON.parse(localStorage.getItem('glpdf.cv'))[c]; d.style=st; const r=await window.__glCvBuild(c,d); let s=''; const u=r.bytes; for(let i=0;i<u.length;i+=8192) s+=String.fromCharCode.apply(null,u.subarray(i,i+8192)); return {b:btoa(s),p:r.pages};}""",[c,st])
-            f=OUT+'/cv-%s-%s.pdf'%(c,st); open(f,'wb').write(_b64.b64decode(r['b']))
+    st=pg.evaluate("window.__glCv.store()"); old=[c for c in st['cvs'].values() if c['name']=='Ancien Nom']
+    ok('CV : ancien CV repris', len(old)==1 and old[0]['exp'][0]['end']['cur'] and len(old[0]['exp'][0]['tasks'])==2 and old[0]['exp'][0]['start']['y']=='2019', old[:1])
+    pg.click('[data-cvnew]'); pg.wait_for_timeout(1200)
+    ok('CV : éditeur ouvert avec toutes les rubriques', pg.locator('.cvnav [data-tab]').count()==15 and pg.locator('.cvpages canvas').count()>=1)
+    for t in ['mes','design','photo','infos','profil','exp','edu','skills','langs','certs','plus','refs','sections','trad','check']:
+        pg.click('.cvnav [data-tab=%s]'%t); pg.wait_for_timeout(150)
+    ok('CV : toutes les rubriques s’affichent sans erreur', not errs, errs[:3])
+    pg.click('.cvnav [data-tab=infos]'); pg.wait_for_timeout(200)
+    pg.fill('[data-p=name][data-f=v]','Test Dupont'); pg.select_option('[data-p=trade]','metal'); pg.wait_for_timeout(200)
+    pg.click('[data-pick=title]'); pg.wait_for_timeout(200); pg.locator('.cvpki').nth(1).click(); pg.wait_for_timeout(200)
+    ok('CV : intitulé choisi dans la liste', pg.input_value('[data-p=title][data-f=fr]')=='Soudeur')
+    pg.click('.cvnav [data-tab=exp]'); pg.click('[data-add=exp]'); pg.wait_for_timeout(200)
+    pg.click('[data-pick=tasks]'); pg.wait_for_timeout(200)
+    for k in range(3): pg.locator('.cvpki').nth(k).click()
+    pg.locator('.cvpki').nth(0).click()  # déjà ajoutée : pas de doublon
+    pg.click('[data-done]'); pg.wait_for_timeout(700)
+    ok('CV : 3 missions ajoutées en un clic, sans doublon', pg.evaluate("window.__glCv.store().cvs[window.__glCv.store().current].exp[0].tasks.length")==3)
+    pg.click('.cvnav [data-tab=profil]'); pg.fill('[data-p=summary][data-f=fr]','Je suis un artisan très motivé et fiable.'); pg.wait_for_timeout(300)
+    # passage en Australie : tout se traduit tout seul
+    pg.click('[data-tgt=au]'); pg.wait_for_timeout(4000)
+    cur=lambda: pg.evaluate("(()=>{const s=window.__glCv.store(); return s.cvs[s.current];})()")
+    c=cur()
+    ok('CV : traduction automatique de vos phrases', c['summary']['en']=='I am a very motivated craftsman & reliable.' and c['summary']['auto'], c['summary'])
+    ok('CV : lignes prêtes traduites par la banque de phrases', c['title']['en']=='Welder' and c['exp'][0]['tasks'][0]['en'].startswith('Fabricated'), [c['title'], c['exp'][0]['tasks'][0]])
+    ok('CV : anglais affiché sous le français', pg.input_value('[data-p=summary][data-f=en]')=='I am a very motivated craftsman & reliable.')
+    pg.fill('[data-p=summary][data-f=en]','Highly motivated and reliable tradesman.'); pg.wait_for_timeout(200)
+    ok('CV : traduction modifiable', 'relu par vous' in pg.inner_text('[data-st=summary]'))
+    pg.fill('[data-p=summary][data-f=fr]','Je suis un artisan très motivé, fiable et ponctuel.'); pg.wait_for_timeout(1800)
+    c=cur()
+    ok('CV : votre traduction n’est pas écrasée (signalée à relire)', c['summary']['en']=='Highly motivated and reliable tradesman.' and 'relire' in pg.inner_text('[data-st=summary]'), c['summary'])
+    r=pg.evaluate("window.__glCv.translate(['Soudeur','Disponible immédiatement'],'au')")
+    ok('CV : banque de phrases', r[0]['en']=='Welder' and r[1]['en']=='Available immediately', r)
+    ok('CV : orthographe australienne', pg.evaluate("window.__glCv.gloss('permis de conduire')").lower().find('licence')>=0, pg.evaluate("window.__glCv.gloss('permis de conduire')"))
+    # vérification : visa et referees demandés pour l'Australie
+    pg.click('.cvnav [data-tab=check]'); pg.wait_for_timeout(1500)
+    chk=pg.inner_text('.cvchl')
+    ok('CV : vérification (visa, referees)', 'visa' in chk and 'referees' in chk, chk[:300])
+    # rubriques : masquer et renommer
+    ex=pg.evaluate("window.__glCv.example()")
+    def build(d):
+        r=pg.evaluate("""async d=>{const r=await window.__glCvBuild2(d); let s=''; const u=r.bytes; for(let i=0;i<u.length;i+=8192) s+=String.fromCharCode.apply(null,u.subarray(i,i+8192)); return {b:btoa(s),p:r.pages};}""",d)
+        return r
+    photo='data:image/jpeg;base64,'+_b64.b64encode(open(S+'/photo.jpg','rb').read()).decode()
+    attendus={'fr':['Expérience professionnelle','Formation','Permis et habilitations','Métallier-serrurier'],'au':['EMPLOYMENT HISTORY','REFEREES','Working Holiday visa holder','Metal Fabricator'],'nz':['WORK EXPERIENCE','REFEREES','Working Holiday Visa, open work rights','Metal Fabricator']}
+    maxp={'fr':2,'au':3,'nz':2}; bad=[]
+    for tpl in ['moderne','droite','banniere','chrono','classique','elegant','epure','compact']:
+        for tg in ['fr','au','nz']:
+            d=_json.loads(_json.dumps(ex)); d['design']['tpl']=tpl; d['target']=tg; d['photo']['src']=photo
+            r=build(d); f=OUT+'/cv2-%s-%s.pdf'%(tpl,tg); open(f,'wb').write(_b64.b64decode(r['b']))
             t=subprocess.run(['pdftotext',f,'-'],capture_output=True,text=True).stdout
             plat=t.replace(' ','').replace(chr(10),'').lower()
-            manque=[x for x in attendus[c]+['Julien Martin'] if x.replace(' ','').lower() not in plat]
-            ok('CV %s %s : contenu complet, %d page(s)'%(c,st,r['p']), not manque and r['p']<=3, manque)
-        pg.click('[data-x]'); pg.wait_for_timeout(300)
-    pg.click('[data-cv=nz]'); pg.wait_for_timeout(600); pg.click('[data-go]'); pg.wait_for_timeout(2500)
-    ok('CV : « Créer le PDF » ouvre le CV dans l’éditeur', 'CV Julien Martin - Nouvelle-Zélande.pdf' in pg.inner_text('#fname') and pg.evaluate("window.__glState().pages.length")>=1, pg.inner_text('#fname'))
-    pg.evaluate("localStorage.removeItem('glpdf.cv')")
+            manque=[x for x in attendus[tg]+['Julien Martin'] if x.replace(' ','').lower() not in plat]
+            imgs=subprocess.run(['pdfimages','-list',f],capture_output=True,text=True).stdout.count('\n')-2
+            if manque or r['p']>maxp[tg] or (imgs>0)!=(tg=='fr'): bad.append((tpl,tg,manque,r['p'],imgs))
+    ok('CV : 8 modèles × 3 pays complets (photo seulement en France)', not bad, bad)
+    d=_json.loads(_json.dumps(ex)); d['target']='au'; d['hidden']={'interests':True}; d['titles']={'langs':{'fr':'Langues parlées','en':'Spoken languages'}}
+    d['design'].update({'levels':'bars','size':'compact','font':'garamond','color':'#123456','dateFmt':'year'})
+    r=build(d); f=OUT+'/cv2-opts.pdf'; open(f,'wb').write(_b64.b64decode(r['b'])); t=subprocess.run(['pdftotext',f,'-'],capture_output=True,text=True).stdout
+    ok('CV : rubrique masquée, titre renommé, options', 'INTERESTS' not in t.upper() and 'SPOKEN LANGUAGES' in t.upper() and 'Mar 2020' not in t and 'EBGaramond' in subprocess.run(['pdffonts',f],capture_output=True,text=True).stdout, t[:200])
+    d=_json.loads(_json.dumps(ex)); d['target']='au'; d['photo']['src']=photo; d['photo']['english']=True; d['photo']['bw']=True; d['photo']['shape']='rounded'
+    f=OUT+'/cv2-photo-au.pdf'; open(f,'wb').write(_b64.b64decode(build(d)['b']))
+    ok('CV : photo possible en anglais si demandé', subprocess.run(['pdfimages','-list',f],capture_output=True,text=True).stdout.count('\n')-2>=1)
+    # données abîmées ou anciennes : rien ne plante
+    r=pg.evaluate("""async()=>{const out=[]; for (const x of [null, {}, {exp:'x', skills:[null,{t:'a'}], design:{tpl:'inconnu'}, target:'xx', langs:[{fr:'Basque',lvl:'Z9'}]}]){ const r=await window.__glCvBuild2(window.__glCv.fix(x)); out.push(r.pages);} return out;}""")
+    ok('CV : données incomplètes acceptées', r==[1,1,1], r)
+    # sauvegarde dans un fichier puis reprise
+    pg.click('.cvnav [data-tab=mes]'); pg.wait_for_timeout(200)
+    with pg.expect_download() as dl: pg.click('[data-cvexp]')
+    bk=OUT+'/cv-sauvegarde.json'; shutil.copy(dl.value.path(), bk); n0=len(_json.load(open(bk))['cvs'])
+    with pg.expect_file_chooser() as fc: pg.click('[data-cvimp]')
+    fc.value.set_files(bk); pg.wait_for_timeout(800)
+    ok('CV : sauvegarde et reprise', n0>=2 and len(pg.evaluate("window.__glCv.store()")['cvs'])==2*n0, n0)
+    # suppression avec « Annuler »
+    pg.click('.cvnav [data-tab=exp]'); pg.wait_for_timeout(200)
+    n=pg.locator('.cvitem').count(); pg.locator('[data-del=exp]').first.click(); pg.wait_for_timeout(200)
+    n1=pg.locator('.cvitem').count(); pg.click('.toast button'); pg.wait_for_timeout(300)
+    ok('CV : suppression annulable', n1==n-1 and pg.locator('.cvitem').count()==n, (n,n1))
+    # plusieurs CV : renommer, dupliquer, supprimer
+    pg.click('.cvnav [data-tab=mes]'); pg.wait_for_timeout(200); k=pg.locator('.cvmi').count()
+    pg.locator('[data-cvdup]').first.click(); pg.wait_for_timeout(500); pg.click('.cvnav [data-tab=mes]'); pg.wait_for_timeout(200)
+    k2=pg.locator('.cvmi').count(); pg.locator('[data-cvdel]').first.click(); pg.click('.cvover [data-y]'); pg.wait_for_timeout(500)
+    ok('CV : dupliquer et supprimer', k2==k+1 and pg.locator('.cvmi').count()==k, (k,k2))
+    # ouvrir dans l'éditeur PDF
+    pg.click('.cvnav [data-tab=mes]'); pg.locator('[data-cvex]').click(); pg.wait_for_timeout(800)
+    pg.click('[data-tgt=au]'); pg.wait_for_timeout(1500)
+    pg.click('[data-go]'); pg.wait_for_timeout(3000)
+    ok('CV : « Ouvrir dans G&L PDF » ouvre le CV', 'CV Julien Martin - Australie.pdf' in pg.inner_text('#fname') and pg.evaluate("window.__glState().pages.length")>=1, pg.inner_text('#fname'))
+    ok('CV : aucune erreur', not errs, errs[:3])
     pg.click('.stab[data-panel=tools]')
     # ---- modifier une ligne ne doit laisser aucun bandeau gris (fond blanc = blanc pur ; fond coloré conservé)
     pg.set_input_files('#fOpen',S+'/fond.pdf'); pg.wait_for_timeout(800)
@@ -188,6 +259,19 @@ with sync_playwright() as pw:
     p=OUT+'/mob.pdf'; shutil.copy(dl.value.path(), p); t=subprocess.run(['pdftotext',p,'-'],capture_output=True,text=True).stdout
     ok('téléphone : enregistrer', 'bis' in t and 'Bonjour' in t)
     ok('téléphone : aucune erreur', not errs, errs[:3])
+    # ---- CV au téléphone
+    pg.evaluate("localStorage.removeItem('glpdf.cv2'); localStorage.setItem('glpdf.cv2.migrated','1')")
+    pg.evaluate("document.body.classList.add('show-side'); document.querySelector('.stab[data-panel=cv]').click(); document.querySelector('[data-cvnew]').click()"); pg.wait_for_timeout(1200)
+    ok('téléphone CV : éditeur plein écran', pg.locator('.cvw2').bounding_box()['width']>=pg.viewport_size['width']-2 and pg.evaluate("(()=>{const c=document.querySelector('.cvw2');return c.scrollWidth<=c.clientWidth+1})()"))
+    pg.tap('.cvnav [data-tab=exp]'); pg.wait_for_timeout(300); pg.tap('[data-add=exp]'); pg.wait_for_timeout(300)
+    pg.tap('[data-pick=tasks]'); pg.wait_for_timeout(300); pg.locator('.cvpki').nth(0).tap(); pg.tap('[data-done]'); pg.wait_for_timeout(300)
+    ok('téléphone CV : ligne prête ajoutée au doigt', pg.locator('.cvli').count()==1)
+    fs=pg.evaluate("parseFloat(getComputedStyle(document.querySelector('.cvli input')).fontSize)")
+    ok('téléphone CV : champs sans zoom automatique (16 px)', fs>=16, fs)
+    pg.tap('.cvtog [data-v=prev]'); pg.wait_for_timeout(2500)
+    ok('téléphone CV : aperçu', pg.locator('.cvpages canvas').count()>=1 and pg.locator('.cvpages canvas').first.bounding_box()['width']<=pg.viewport_size['width'])
+    pg.tap('.cvtog [data-v=form]'); pg.tap('[data-x]'); pg.wait_for_timeout(300)
+    ok('téléphone CV : aucune erreur', not errs, errs[:3])
     # ---- fenêtre « Demander à Claude » (aucune clé ; fausse API GitHub en lecture : rien n'est envoyé)
     from urllib.parse import unquote
     def gh(route, req):
